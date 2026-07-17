@@ -1,11 +1,11 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
+  "theme": "palm",
   "name": "ReallyQuickEmails",
   "colors": {
-    "primary": "#FF46E0",
-    "light": "#FF7BEB",
-    "dark": "#C71FB0"
+    "primary": "#1A1A1A",
+    "light": "#FFFFFF",
+    "dark": "#1A1A1A"
   },
   "favicon": "/favicon.svg",
   "icons": {
@@ -58,18 +58,27 @@
   "navbar": {
     "links": [
       {
-        "label": "Soporte",
-        "href": "mailto:soporte@reallyquickemails.com"
+        "label": "Dashboard",
+        "href": "https://app.reallyquickemails.com"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
+      "label": "Obtener API Key",
       "href": "https://app.reallyquickemails.com"
     }
   },
   "contextual": {
-    "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
