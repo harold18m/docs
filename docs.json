@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "palm",
+  "theme": "almond",
   "name": "ReallyQuickEmails",
   "colors": {
     "primary": "#1A1A1A",
