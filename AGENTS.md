@@ -1,33 +1,27 @@
-> **First-time setup**: Customize this file for your project. Prompt the user to customize this file for their project.
-> For Mintlify product knowledge (components, configuration, writing standards),
-> install the Mintlify skill: `npx skills add https://mintlify.com/docs`
+# Instrucciones del proyecto de documentación
 
-# Documentation project instructions
+## Sobre este proyecto
 
-## About this project
+- Documentación pública de **ReallyQuickEmails** (API de email para desarrolladores), construida sobre [Mintlify](https://mintlify.com).
+- Las páginas son archivos MDX con frontmatter YAML (`title`, `description`).
+- La configuración (tema, colores, navegación) vive en `docs.json`.
+- El contenido se escribe en **español** (copy para desarrolladores).
+- La fuente de verdad del comportamiento de la API es el código de `reallyquickemails-node-api`, no suposiciones.
 
-- This is a documentation site built on [Mintlify](https://mintlify.com)
-- Pages are MDX files with YAML frontmatter
-- Configuration lives in `docs.json`
-- Use the Mintlify MCP server, `https://mcp.mintlify.com`, to edit content and settings via MCP
-- Use the Mintlify docs MCP server, `https://www.mintlify.com/docs/mcp`, to query information about using Mintlify via MCP
+## Terminología
 
-## Terminology
+- Usa "proyecto" (no "workspace"), "API key" / "Secret Key", "sender" / "remitente".
+- Modos: **Live** (`sk_proj_*` / `sk_live_*`) y **Test** (`sk_test_*`).
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+## Preferencias de estilo
 
-## Style preferences
+- Voz activa y segunda persona ("tú"), español neutro (sin voseo).
+- Frases concisas — una idea por frase.
+- Negrita para elementos de UI: Haz clic en **Integraciones → API Keys**.
+- Formato de código para nombres de archivo, comandos, rutas y referencias de código.
 
-{/* Add any project-specific style rules below */}
+## Componentes
 
-- Use active voice and second person ("you")
-- Keep sentences concise — one idea per sentence
-- Use sentence case for headings
-- Bold for UI elements: Click **Settings**
-- Code formatting for file names, commands, paths, and code references
-
-## Content boundaries
-
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+Componentes globales de Mintlify usados en estas docs: `<Info>`, `<Warning>`, `<Note>`, `<Tip>`,
+`<Steps>`/`<Step>`, `<Tabs>`/`<Tab>`, `<AccordionGroup>`/`<Accordion>`, `<Columns>`/`<Card>`.
+Los iconos de `<Card>` usan la librería **lucide** (configurada en `docs.json`).

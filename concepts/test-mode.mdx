@@ -1,0 +1,177 @@
+---
+title: Modos Live y Test
+description: "Modos Live y Test según el prefijo de tu API key."
+---
+
+ReallyQuickEmails separa tráfico productivo y de desarrollo por el **prefijo de la API key**, no por un parámetro del request. Así un dev no manda tráfico de pruebas como producción por olvidar un flag.
+
+## El modelo
+
+| | Live | Test |
+|---|---|---|
+| **Prefijo de key** | `sk_proj_*` o `sk_live_*` | `sk_test_*` |
+| **Cuota mensual** | cuenta | **también cuenta** — el envío es real |
+| **Payload `is_test`** | `false` | `true` |
+| **Métricas del dashboard** | producción | separadas (filtro Live/Test) |
+| **Webhook outbound** | `webhook_url` | `webhook_url_dev` |
+| **Webhook inbound (replies)** | `inbound_webhook_url` | `inbound_webhook_url_dev` |
+| **Envío real al inbox** | sí | **sí, también** |
+| **Rate limit y suppression list** | compartidos | compartidos |
+
+<Info>
+  **Test mode SÍ envía emails reales**
+
+  El email sale de verdad y llega al inbox del destinatario. Puedes probar deliverability, render visual y comportamiento de los clientes de email igual que en producción. La diferencia está en *métricas y routing de webhooks*, no en el envío. Por eso, los envíos test también consumen cuota mensual.
+</Info>
+
+## Cómo se decide el modo
+
+El modo viaja en la key. No hay parámetro `mode`, ni headers especiales, ni flag por endpoint:
+
+<Tabs>
+
+<Tab title="Live">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_live_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "cliente@empresa.com",
+    "sender_email": "noreply@tudominio.com",
+    "subject": "Confirmación de pedido",
+    "html_body": "<p>Tu pedido fue confirmado.</p>"
+  }'
+```
+
+→ webhook a `webhook_url`
+→ payload con `is_test: false`
+→ actividad visible en las métricas de producción
+
+</Tab>
+
+<Tab title="Test">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_test_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "qa@empresa.com",
+    "sender_email": "noreply@tudominio.com",
+    "subject": "QA — confirmación",
+    "html_body": "<p>Test desde staging.</p>"
+  }'
+```
+
+→ webhook a `webhook_url_dev`
+→ payload con `is_test: true`
+→ actividad marcada como test, separada de tus métricas live
+
+</Tab>
+
+</Tabs>
+
+## Webhook routing
+
+Cada proyecto tiene **cuatro URLs configurables** (en pares outbound/inbound, una para cada modo):
+
+```text
+project/
+├─ outbound (delivered, bounced, opened, clicked)/
+│  ├─ webhook_url        — recibe eventos de sk_live_* / sk_proj_*
+│  └─ webhook_url_dev    — recibe eventos de sk_test_*
+└─ inbound (replies con adjuntos)/
+   ├─ inbound_webhook_url      — recibe replies de envíos live
+   └─ inbound_webhook_url_dev  — recibe replies de envíos test
+```
+
+### Si la URL `_dev` está vacía
+
+<Info>
+  **Fallback a la URL de live**
+
+  Si tu proyecto **no tiene** `webhook_url_dev` y envías con `sk_test_*`, los eventos caen a `webhook_url`. El payload llega con `is_test: true` para distinguirlos. Si ambas URLs están vacías, el evento no se entrega, pero el email sigue saliendo al inbox real. Ver el detalle en [Webhooks](/api-reference/webhooks).
+</Info>
+
+### `is_test` en el payload
+
+Todos los webhooks (outbound e inbound) incluyen `is_test: boolean` en el body. Si quieres, recibe todo en una sola URL (`webhook_url`) y filtra lado-cliente, dejando `webhook_url_dev` vacío:
+
+```json
+{
+  "event": "email.delivery",
+  "is_test": true,
+  "data": { "...": "..." }
+}
+```
+
+Pero **mantenerlas separadas es lo recomendado** para evitar accidentes operativos.
+
+## Caso de uso: setup multi-environment
+
+<Tabs>
+
+<Tab title="Local dev">
+
+```bash
+# .env.local
+RQE_API_KEY=sk_test_xxxxxxxxxxxx
+```
+
+Tu app local usa `sk_test_`. Los emails que mandes en desarrollo:
+- Llegan al inbox real (pruebas render, deliverability)
+- Quedan marcados con `is_test: true` — no mezclan métricas con prod
+- Webhooks funcionan idéntico (si configuras `webhook_url_dev` apuntando a un ngrok o servicio de testing)
+
+</Tab>
+
+<Tab title="Staging">
+
+```bash
+# Variables del ambiente staging
+RQE_API_KEY=sk_test_xxxxxxxxxxxx
+```
+
+Mismo `sk_test_*` que local. Staging manda emails reales marcados como test. Si tienes webhook listener en staging, apunta `webhook_url_dev` a esa URL.
+
+</Tab>
+
+<Tab title="Production">
+
+```bash
+# Variables del ambiente prod
+RQE_API_KEY=sk_live_xxxxxxxxxxxx
+```
+
+Producción usa `sk_live_*` (o `sk_proj_*`). Webhooks a `webhook_url` (production listener).
+
+</Tab>
+
+</Tabs>
+
+<Info>
+  **Tu código no necesita saber el modo**
+
+  El modo depende solo de qué env var lees. Los call sites a la API son idénticos. El switch vive en las variables de entorno de tu hosting, no en código donde es fácil olvidar un flag.
+</Info>
+
+## Casos extremos
+
+### Suppression list
+
+Es **compartida** entre live y test. Si un destinatario se dio de baja por un envío live, los envíos test al mismo recipient también se omiten. En `/v1/send-template-email` recibes `200` con `skipped: true`; en `/v1/send-email` la supresión se aplica en segundo plano y la actividad queda con estado `suppressed`. Así, los tests de QA no reactivan la entrega a usuarios que ya no quieren tus emails.
+
+### Rate limit
+
+Live y test comparten el rate limit y la cuota mensual de tu proyecto. Un spike de tests consume cuota real y afecta tu envío productivo.
+
+### Regenerar keys
+
+Live y test se regeneran independientemente desde el dashboard: regenerar una no afecta la otra. La key anterior queda invalidada al instante.
+
+## Próximos pasos
+
+- [API Keys](/guides/api-keys) — referencia completa con ejemplos de idempotency y dry-run.
+- [Webhooks](/api-reference/webhooks) — formato de payload y verificación HMAC.
+- [Quickstart](/guides/quickstart) — primer envío end-to-end con `sk_test_*`.

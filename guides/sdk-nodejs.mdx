@@ -1,0 +1,343 @@
+---
+title: SDK de Node.js
+description: "SDK oficial @reallyquickemails/sdk para Node.js, Bun, Deno y edge runtimes."
+---
+
+SDK oficial de ReallyQuickEmails para Node.js / TypeScript. Cubre los 5 módulos: `emails`, `leads`, `automations`, `events` y `senders`.
+
+- **Repo:** [github.com/DropoutCapital/reallyquickemails-sdk](https://github.com/DropoutCapital/reallyquickemails-sdk)
+- **npm:** [@reallyquickemails/sdk](https://www.npmjs.com/package/@reallyquickemails/sdk)
+- **License:** MIT
+- **Tamaño:** ~13 KB CJS / ~12 KB ESM, zero runtime deps (usa `fetch` nativo)
+
+<Info>
+  Funciona en cualquier runtime con `fetch` nativo: Node.js 18+, Bun, Deno, Cloudflare Workers, Vercel Edge.
+  **NO corre en el browser**: el constructor lanza un error si detecta `window`, para no exponer el API key en el bundle del cliente.
+</Info>
+
+## Instalación
+
+<Tabs>
+  <Tab title="npm">
+```bash
+npm install @reallyquickemails/sdk
+```
+  </Tab>
+  <Tab title="pnpm">
+```bash
+pnpm add @reallyquickemails/sdk
+```
+  </Tab>
+  <Tab title="yarn">
+```bash
+yarn add @reallyquickemails/sdk
+```
+  </Tab>
+  <Tab title="bun">
+```bash
+bun add @reallyquickemails/sdk
+```
+  </Tab>
+</Tabs>
+
+## Quickstart
+
+<Steps>
+
+<Step title="Obtener API key">
+
+Genera una key en `Configuración → Integraciones → API Keys`. Para empezar usa una **Test key** (`sk_test_*`): envía emails reales sin contaminar tus métricas de producción. Ver [API Keys](/guides/api-keys).
+
+```bash
+export RQE_API_KEY="sk_test_tu_test_key"
+```
+
+</Step>
+
+<Step title="Inicializar el cliente">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+```
+
+Si omites `apiKey`, el SDK lee `process.env.RQE_API_KEY`. Para apuntar a otro backend (staging, self-hosted) pasa `baseUrl` o define `RQE_BASE_URL`:
+
+```ts
+const rqe = new RQE({
+  apiKey: process.env.RQE_API_KEY,
+  baseUrl: 'https://api-staging.ejemplo.com',
+});
+```
+
+</Step>
+
+<Step title="Mandar tu primer email">
+
+```ts
+const { data, error } = await rqe.emails.send({
+  sender: 'soporte@tudominio.com',     // sender verificado
+  recipient: 'usuario@example.com',
+  subject: 'Bienvenido',
+  html: '<p>Hola desde RQE</p>',
+});
+
+if (error) {
+  console.error('Send falló:', error.message);
+} else {
+  console.log('Email encolado, id:', data.email_id);
+}
+```
+
+El sender debe estar verificado en tu proyecto. Ver [dominios](/api-reference/domains).
+
+</Step>
+
+</Steps>
+
+## Manejo de errores
+
+Cada método devuelve `{ data, error, headers }`. **Siempre revisa `error` antes de usar `data`** — `data` es `null` cuando hay error.
+
+```ts
+const { data, error, headers } = await rqe.emails.send({ /* ... */ });
+
+if (error) {
+  switch (error.statusCode) {
+    case 401: /* API key inválida */ break;
+    case 429: /* Rate limit — espera y reintenta */ break;
+    default:  console.error(error);
+  }
+  return;
+}
+
+console.log(data.email_id);
+console.log('Idempotency replayed:', headers['idempotency-replayed']);
+```
+
+| `error.name` | Cuándo |
+|---|---|
+| `unauthorized` | API key inválida o ausente |
+| `validation_error` | Body inválido (campos requeridos faltantes, formato malo) |
+| `not_found` | Recurso no existe (lead, automation, event) |
+| `network_error` | Falla de red — no llegó respuesta del backend |
+| `parse_error` | Backend devolvió respuesta no-JSON |
+| `application_error` | Error genérico backend (5xx) |
+
+## Módulos
+
+### `emails` — transactional + broadcast
+
+```ts
+// Single email
+await rqe.emails.send({
+  sender: 'soporte@brand.com',
+  recipient: 'user@example.com',
+  subject: 'Confirmación',
+  html: '<p>Tu pedido fue recibido.</p>',
+  attachments: [{ filename: 'factura.pdf', content: base64Pdf }],
+});
+
+// Broadcast — un template a hasta 10,000 recipients
+await rqe.emails.sendBatch({
+  sender: 'noreply@brand.com',
+  subject: 'Hola {{name}}',
+  html: '<p>Hola {{name}}, tu plan {{plan}} se renueva pronto.</p>',
+  recipients: [
+    { email: 'a@x.com', data: { name: 'Alice', plan: 'Pro' } },
+    { email: 'b@x.com', data: { name: 'Bob', plan: 'Free' } },
+  ],
+});
+```
+
+### `leads` — gestión de contactos
+
+```ts
+// Upsert por email
+await rqe.leads.upsert({
+  email: 'user@example.com',
+  data: { plan: 'pro', signup_date: '2026-04-30' },
+  segment_ids: ['seg-uuid-1'],
+});
+
+// Bulk hasta 1000
+await rqe.leads.upsertMany({
+  leads: [
+    { email: 'a@x.com', data: { plan: 'pro' } },
+    { email: 'b@x.com' },
+  ],
+});
+
+// Tags por email
+await rqe.leads.addTags('user@example.com', ['vip', 'beta']);
+const { data } = await rqe.leads.getTags('user@example.com');
+
+// Atributos custom (body raw, NO wrapped)
+await rqe.leads.setAttributes('user@example.com', {
+  total_orders: 42,
+  last_order_date: '2026-04-30',
+});
+
+// Listar con paginación
+const page = await rqe.leads.list({ page: 1, per_page: 50, search: 'pro' });
+
+// Get / update / delete por UUID
+const { data: { lead } } = await rqe.leads.get('lead-uuid');
+await rqe.leads.update('lead-uuid', { data: { plan: 'enterprise' } });
+await rqe.leads.delete('lead-uuid');
+```
+
+### `automations` — disparar flujos
+
+```ts
+// Enroll idempotente — pasa trigger_reference_id para que múltiples calls
+// con el mismo external_id NO creen runs duplicados, sino que actualicen el run existente
+await rqe.automations.enroll('automation-uuid', {
+  email: 'user@example.com',
+  data: { first_name: 'Adriano', plan: 'pro' },
+  trigger_reference_id: 'order-12345',
+});
+
+// Manual enroll (UI-style bulk)
+await rqe.automations.manualEnroll('automation-uuid', {
+  emails: ['a@x.com', 'b@x.com'],
+});
+
+// Cancel por recipient
+await rqe.automations.cancel('automation-uuid', {
+  email: 'user@example.com',
+  reason: 'payment_succeeded',
+});
+
+// Cancel por external_id (cuando no tienes el email)
+await rqe.automations.cancelByExternalId('automation-uuid', {
+  external_id: 'order-12345',
+});
+```
+
+### `events` — tracking custom
+
+```ts
+// Single event
+await rqe.events.track({
+  email: 'user@example.com',
+  event: 'offer_accepted',
+  properties: { offer_id: 'xyz', amount_usd: 5000 },
+});
+
+// Bulk hasta 1000
+await rqe.events.bulk([
+  { email: 'a@b.com', event: 'page_view', properties: { url: '/pricing' } },
+  { email: 'c@d.com', event: 'page_view', properties: { url: '/features' } },
+]);
+
+// Listar con filtros + paginación offset
+const { data } = await rqe.events.list({
+  email: 'user@example.com',
+  event: 'offer_accepted',
+  since: '2026-04-01T00:00:00Z',
+  per_page: 50,
+});
+```
+
+### `senders` — listar / verificar remitentes (v0.1.1+)
+
+Descubre qué senders están verificados, verifica nuevos vía magic link y consulta el estado de un remitente.
+
+<Warning>
+  Este módulo requiere `projectId` en el constructor (o `RQE_PROJECT_ID` env). Encuéntralo en la URL del dashboard: `app.reallyquickemails.com/projects/<projectId>/...`. Los otros módulos (emails, leads, automations, events) no necesitan este parámetro.
+</Warning>
+
+```ts
+const rqe = new RQE({
+  apiKey: process.env.RQE_API_KEY,
+  projectId: process.env.RQE_PROJECT_ID,
+});
+
+// Listar todos los senders
+const { data } = await rqe.senders.list();
+// data.senders = [{ email, sender_name, status, type, ... }, ...]
+
+// Filtrar solo verificados
+const { data: verified } = await rqe.senders.list({ status: 'verified' });
+
+// Elegir sender en runtime según contexto
+const transactionalSender = verified.senders.find(s => s.email.startsWith('noreply@'));
+await rqe.emails.send({
+  sender: transactionalSender.email,
+  recipient: 'user@example.com',
+  subject: 'Confirmación',
+  html: '<p>...</p>',
+});
+
+// Verificar un sender nuevo (se envía un magic link al email)
+await rqe.senders.verifyEmail({ email: 'support@brand.com' });
+
+// Check status de un sender específico
+const { data: st } = await rqe.senders.status('support@brand.com');
+// st.status: 'Success' | 'Pending' | 'Failed' | 'NotStarted'
+```
+
+Casos de uso típicos:
+- **Multi-tenant** — listar senders del proyecto activo y elegir según el cliente
+- **Failover** — si un sender falla DKIM/DMARC, fallback automático a otro verified
+- **Onboarding wizard** — UI muestra senders disponibles para que el cliente elija
+- **Health check** — poll periódico de status para detectar senders fallados
+
+## Idempotency
+
+Para retries seguros (timeouts de red, reintentos de Lambda), pasa `idempotencyKey` en operaciones de escritura. Hoy soportado en `emails.send` y `emails.sendBatch`.
+
+```ts
+await rqe.emails.send(
+  {
+    sender: 'soporte@brand.com',
+    recipient: 'user@example.com',
+    subject: 'Pedido #123',
+    html: '<p>Confirmación</p>',
+  },
+  { idempotencyKey: 'order-123-confirmation' },
+);
+```
+
+El backend cachea la respuesta por 24h para el par `(project_id, idempotencyKey)`. Una segunda llamada con la misma key devuelve la respuesta cacheada **sin re-procesar** y agrega el header `Idempotency-Replayed: true`.
+
+```ts
+const { data, headers } = await rqe.emails.send(
+  { /* ... */ },
+  { idempotencyKey: 'unique-id' },
+);
+if (headers['idempotency-replayed'] === 'true') {
+  console.log('Replay — backend ya había procesado este request');
+}
+```
+
+<Info>
+  Más sobre el comportamiento del backend en [API Keys → Idempotency](/guides/api-keys).
+</Info>
+
+## Compatibilidad de runtime
+
+| Runtime | Soportado | Notas |
+|---|---|---|
+| Node.js 18+ | ✅ | `fetch` nativo |
+| Node.js 16 | ❌ | Sin `fetch` nativo |
+| Bun | ✅ | |
+| Deno | ✅ | |
+| Cloudflare Workers | ✅ | |
+| Vercel Edge | ✅ | |
+| Browser | ❌ | El SDK throw si detecta `window` para proteger tu API key |
+
+## Configuración
+
+| Opción | Tipo | Default | Descripción |
+|---|---|---|---|
+| `apiKey` | `string` | `process.env.RQE_API_KEY` | Tu API key del proyecto |
+| `baseUrl` | `string` | `process.env.RQE_BASE_URL` o `https://api.reallyquickemails.com` | Override para staging o self-hosted |
+| `projectId` | `string` | `process.env.RQE_PROJECT_ID` | UUID del proyecto. **Requerido solo por el módulo `senders`** — los demás módulos lo derivan del API key. |
+
+## Soporte
+
+- **Bugs y feature requests:** [GitHub Issues](https://github.com/DropoutCapital/reallyquickemails-sdk/issues)
+- **Email:** [soporte@reallyquickemails.com](mailto:soporte@reallyquickemails.com)

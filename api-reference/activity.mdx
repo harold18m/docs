@@ -1,0 +1,258 @@
+---
+title: Activity
+description: "Consulta el estado de tus envíos: entregas, aperturas, clicks, rebotes y reclamos."
+---
+
+Consulta el estado de los emails enviados — entregas, aperturas, clicks, rebotes y reclamos — por ID o con filtros.
+
+## Autenticacion
+
+Incluye tu API key del proyecto en cada request:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Sin una API key válida, la respuesta es `401` con `{ "error": "..." }`.
+
+Ver más en [Public API](public-api#autenticacion).
+
+---
+
+## Endpoints
+
+### GET /v1/activity/:id
+
+Obtén el detalle de un envío específico por su ID.
+
+**Parámetros:**
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `id` (path) | uuid | Sí | ID del envío. Lo recibes como `activity_id` en los webhooks `email.*`, o como `email_id` en la respuesta de [POST /v1/send-email](send-email) |
+| `include` (query) | string | No | `events`, `html` o `events,html` — incluye el timeline completo de eventos y/o el HTML renderizado del email |
+
+**Request:**
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/activity/e5522dde-33c7-4644-bf0a-28ec73830616 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e5522dde-33c7-4644-bf0a-28ec73830616",
+    "created_at": "2026-04-17T16:40:20.623Z",
+    "email_type": "automation",
+    "campaign_id": null,
+    "automation_run_id": "e42c853c-2e28-40cc-aad8-5de7d5395ede",
+    "template_id": "bb164399-3ac3-475f-9acb-dc049a20d0d3",
+    "message_id": "0100019d9c5098e5-888cac99-cd05-4882-9442-d293c98631fc-000000",
+    "subject": "Test",
+    "sender_email": "antonia@capitaria.com",
+    "sender_name": "Antonia",
+    "recipient_primary": "harold@dropout.cl",
+    "current_status": "delivered",
+    "delivered_at": "2026-04-17T16:40:21.813Z",
+    "bounced_at": null,
+    "complained_at": null,
+    "opened_first_at": "2026-04-17T16:41:55.099Z",
+    "clicked_first_at": "2026-04-17T17:30:17.645Z"
+  }
+}
+```
+
+**Campos:**
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | uuid | `activity_id` — úsalo para llamadas posteriores |
+| `current_status` | string | Estado actual: `queued`, `retrying`, `sent`, `delivered`, `bounced`, `complained`, `failed`, `suppressed` |
+| `delivered_at` | ISO8601 \| null | Timestamp de entrega confirmada |
+| `opened_first_at` | ISO8601 \| null | Primera apertura (puede haber varias, ver `?include=events`) |
+| `clicked_first_at` | ISO8601 \| null | Primer click (idem) |
+| `bounced_at` | ISO8601 \| null | Timestamp del rebote (hard o soft) |
+| `complained_at` | ISO8601 \| null | Timestamp cuando el destinatario marcó como spam |
+| `message_id` | string | Identificador del mensaje asignado por la infraestructura de envío — útil para correlacionar eventos |
+
+Estados posibles de `current_status`:
+
+| Estado | Significado |
+|---|---|
+| `queued` | Aceptado, en cola de envío |
+| `retrying` | Reintentando tras un fallo temporal |
+| `sent` | Enviado al servidor del destinatario |
+| `delivered` | Entrega confirmada |
+| `bounced` | Rebotó (hard o soft) |
+| `complained` | El destinatario lo marcó como spam |
+| `failed` | Falló de forma permanente |
+| `suppressed` | Bloqueado por la lista de supresión del proyecto |
+
+**Con `?include=events`** — agrega un array `events` con el timeline completo, ordenado por `event_timestamp` ascendente:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e5522dde-33c7-4644-bf0a-28ec73830616",
+    "current_status": "delivered",
+    "events": [
+      {
+        "id": "0c0ffe2e-1111-2222-3333-444455556666",
+        "event_type": "delivered",
+        "event_timestamp": "2026-04-17T16:40:21.813Z",
+        "user_agent": null,
+        "ip_address": null,
+        "url_clicked": null,
+        "bounce_type": null,
+        "bounce_subtype": null,
+        "complaint_feedback_type": null,
+        "created_at": "2026-04-17T16:40:22.000Z"
+      },
+      {
+        "id": "1d1aabbc-1111-2222-3333-444455556666",
+        "event_type": "open",
+        "event_timestamp": "2026-04-17T16:41:55.099Z",
+        "user_agent": "Mozilla/5.0 ...",
+        "ip_address": "66.249.84.135",
+        "url_clicked": null,
+        "bounce_type": null,
+        "bounce_subtype": null,
+        "complaint_feedback_type": null,
+        "created_at": "2026-04-17T16:42:00.000Z"
+      },
+      {
+        "id": "2e2bbccd-1111-2222-3333-444455556666",
+        "event_type": "click",
+        "event_timestamp": "2026-04-17T17:30:17.645Z",
+        "user_agent": "Mozilla/5.0 ...",
+        "ip_address": "190.0.0.1",
+        "url_clicked": "https://landing.capitaria.com/masterclass",
+        "bounce_type": null,
+        "bounce_subtype": null,
+        "complaint_feedback_type": null,
+        "created_at": "2026-04-17T17:30:20.000Z"
+      }
+    ]
+  }
+}
+```
+
+`event_type` puede ser: `sent`, `delivered`, `bounce`, `complaint`, `reject`, `open`, `click`, `rendering_failure`, `delivery_delay`.
+
+**Con `?include=html`** — agrega el campo `html_content` con el HTML completo renderizado del email (puede ser grande, solo pedirlo cuando se necesite).
+
+**Errores:**
+
+| Código | Causa |
+|---|---|
+| 401 | API key inválida o ausente |
+| 404 | `activity_id` no existe o no pertenece al proyecto |
+| 500 | Error interno |
+
+Las respuestas de error tienen la forma `{ "error": "mensaje" }`.
+
+---
+
+### GET /v1/activity
+
+Lista envíos con filtros para obtener datasets históricos y analizar patrones de entrega.
+
+**Parámetros (query):**
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `email` | string | No | Filtra por `recipient_primary` (se normaliza a lowercase) |
+| `status` | string | No | Filtra por `current_status`: `queued`, `retrying`, `sent`, `delivered`, `bounced`, `complained`, `failed`, `suppressed` |
+| `automation_run_id` | uuid | No | Todos los emails generados por un enrollment específico |
+| `campaign_id` | uuid | No | Todos los emails enviados como parte de una campaña |
+| `since` | ISO8601 | No | `created_at >= since` |
+| `until` | ISO8601 | No | `created_at <= until` |
+| `page` | int | No | Default 1 |
+| `per_page` | int | No | Default 50, max 200 |
+
+**Caso típico con `automation_run_id`:** guarda el `automation_run_id` que devuelve `POST /v1/automations/:id/enroll`. Cuando el flujo haya ejecutado N emails, obtén todos filtrando por ese ID.
+
+**Request:**
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/v1/activity?email=jane@acme.com&status=delivered&since=2026-04-01" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+Filtrar por `automation_run_id`:
+
+```bash
+curl "https://api.reallyquickemails.com/v1/activity?automation_run_id=e42c853c-2e28-40cc-aad8-5de7d5395ede" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "e5522dde-33c7-4644-bf0a-28ec73830616",
+      "subject": "Bienvenida",
+      "recipient_primary": "jane@acme.com",
+      "current_status": "delivered"
+    },
+    {
+      "id": "f6633eef-44d8-5755-c01b-39fd84941727",
+      "subject": "Recordatorio",
+      "recipient_primary": "jane@acme.com",
+      "current_status": "sent"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 1423,
+    "total_pages": 29
+  }
+}
+```
+
+Cada elemento de `data` incluye los mismos campos base que `GET /v1/activity/:id` (aquí abreviados). Orden por `created_at DESC` (más reciente primero).
+
+**Errores:**
+
+| Código | Causa |
+|---|---|
+| 401 | API key inválida o ausente |
+| 500 | Error interno |
+
+Las respuestas de error tienen la forma `{ "error": "mensaje" }`.
+
+---
+
+## Pull vs Webhook
+
+- **Pull** (este endpoint): consultas cuando lo necesites. Simple de integrar, pero con latencia — las aperturas y clicks se procesan en segundo plano y pueden tardar unos segundos (~5s) en reflejarse en `opened_first_at` / `clicked_first_at` y en el timeline de eventos.
+- **Webhook**: eventos push en tiempo real. Mejor para triggers reactivos.
+
+Para analizar patrones de entrega en batch, usa pull. Para automatizaciones reactivas en tiempo real, usa webhooks.
+
+Ver más en [Webhooks](webhooks).
+
+## Rate limits
+
+- Max 200 resultados por página en `GET /v1/activity` (`per_page` mayor a 200 se ajusta a 200).

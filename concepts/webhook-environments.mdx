@@ -1,0 +1,171 @@
+---
+title: Webhook environments
+description: "Rutea webhooks a ambientes custom (staging, qa, preview) con el campo environment."
+---
+
+Configura **N URLs de webhook** por proyecto, una por ambiente custom (staging, qa, preview, etc.). Eliges a cuál disparar con un campo `environment` opcional en el body del envío. Útil cuando una misma key Live se usa desde múltiples ambientes (mismo billing) y cada uno debe recibir sus propios webhooks.
+
+## Diferencia con Live/Test
+
+| Mecanismo | Cómo se elige | Afecta `is_test` y métricas | Caso típico |
+|---|---|---|---|
+| **[Live vs Test](/concepts/test-mode)** | Prefijo de la key (`sk_live_*` vs `sk_test_*`) | Sí — los envíos quedan marcados `is_test: true`, separados de las métricas live | Devs probando emails reales sin contaminar métricas |
+| **Environments custom** (esta página) | Campo `environment` en body del envío | **No** — solo cambia la URL del webhook; la key sigue mandando | Misma key Live desde staging y producción del cliente |
+
+Los dos coexisten: `sk_test_*` para QA local **y** environments custom para los ambientes intermedios del cliente.
+
+## Configuración
+
+<Steps>
+
+<Step title="Definir los environments">
+
+Dashboard → tu proyecto → **Configuración → Integraciones → Webhook Environments**. Agregas pares `nombre + URL`:
+
+```text
+webhook_environments (outbound)/
+├─ staging       — https://staging.tuapp.com/webhooks/email
+├─ qa            — https://qa.tuapp.com/webhooks/email
+└─ preview-pr-42 — https://pr-42.preview.tuapp.com/webhooks/email
+
+inbound_webhook_environments (replies)/
+├─ staging       — https://staging.tuapp.com/webhooks/inbound
+└─ qa            — https://qa.tuapp.com/webhooks/inbound
+```
+
+Las claves (`staging`, `qa`, `preview-pr-42`) son arbitrarias, sin nombres reservados. Restricción: `[a-zA-Z0-9_.-]` hasta 64 chars.
+
+</Step>
+
+<Step title="Mandar el envío con `environment`">
+
+<Tabs>
+
+<Tab title="curl">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "user@example.com",
+    "sender_email": "noreply@tudominio.com",
+    "subject": "Confirmación",
+    "html_body": "<p>Hola</p>",
+    "environment": "staging"
+  }'
+```
+
+</Tab>
+
+<Tab title="JavaScript">
+
+```javascript
+await fetch('https://api.reallyquickemails.com/v1/send-email', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.RQE_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    recipient_email: 'user@example.com',
+    sender_email: 'noreply@tudominio.com',
+    subject: 'Confirmación',
+    html_body: '<p>Hola</p>',
+    environment: 'staging',
+  }),
+});
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import os, requests
+
+requests.post(
+    'https://api.reallyquickemails.com/v1/send-email',
+    headers={'Authorization': f"Bearer {os.environ['RQE_API_KEY']}"},
+    json={
+        'recipient_email': 'user@example.com',
+        'sender_email': 'noreply@tudominio.com',
+        'subject': 'Confirmación',
+        'html_body': '<p>Hola</p>',
+        'environment': 'staging',
+    },
+)
+```
+
+</Tab>
+
+</Tabs>
+
+</Step>
+
+<Step title="Recibir el webhook con echo">
+
+El payload que llega al endpoint de `staging` incluye `environment` echo. No necesitas parsear URLs para diferenciar:
+
+```json
+{
+  "event": "email.delivery",
+  "environment": "staging",
+  "is_test": false,
+  "timestamp": "2026-04-29T15:30:42.123Z",
+  "project_id": "...",
+  "data": {
+    "activity_id": "...",
+    "message_id": "...",
+    "recipient": "user@example.com",
+    "event_type": "delivery",
+    "event_timestamp": "2026-04-29T15:30:42.000Z"
+  }
+}
+```
+
+Mismo modelo para inbound replies — el payload del `email.inbound` también incluye `environment`.
+
+</Step>
+
+</Steps>
+
+## Comportamiento
+
+<Info>
+  **Override exclusivo, no aditivo**
+
+  Con `environment` configurado, el webhook va **solo** a esa URL. Si el `environment` no existe en `webhook_environments`, RQE responde **400 `ENVIRONMENT_NOT_CONFIGURED`** — sin fallback silencioso al `webhook_url` default. Los errores de configuración son visibles desde el primer envío.
+</Info>
+
+| Caso | Routing |
+|---|---|
+| Body con `environment: "staging"` y `webhook_environments.staging` existe | → solo a `webhook_environments.staging` |
+| Body con `environment: "staging"` pero no está en `webhook_environments` | → **400 error**, no se encola el envío |
+| Body sin `environment` y key es `sk_live_*` | → `webhook_url` (live) |
+| Body sin `environment` y key es `sk_test_*` | → `webhook_url_dev` (test) |
+| Body con `environment` y key es `sk_test_*` | → solo a `webhook_environments[env]` (override gana) |
+
+## Idempotencia con `environment`
+
+`Idempotency-Key` funciona por `(projectId, key)`, **no incluye `environment`** en el scope. Si reintentas con distinto `environment` y misma `Idempotency-Key` dentro de 24h, recibes el resultado cacheado del primer request, con el `environment` original. Para distinguir envíos por ambiente, usa una `Idempotency-Key` distinta.
+
+## Cuándo usarlo
+
+**Buen fit:**
+
+- Misma app cliente con varios ambientes (prod, staging, qa) que comparten billing y métricas pero quieren callbacks separados.
+- Preview deployments con URLs efímeras (`preview-pr-N`).
+- Multi-tenant SaaS que quiere identificar tráfico por sub-cliente sin separar proyectos RQE.
+
+**No es la herramienta para:**
+
+- Separar métricas y actividad dev/prod — usa [Test mode](/concepts/test-mode) (`sk_test_*`).
+- Aislar suppression list — la suppression es por proyecto, compartida entre todos los environments.
+- Replicar 100% un setup multi-cliente — para eso crea proyectos RQE separados.
+
+## Próximos pasos
+
+- [Webhooks (referencia)](/api-reference/webhooks) — formato completo del payload, verificación HMAC, retry logic.
+- [Test mode](/concepts/test-mode) — diferencias con `sk_test_*`.
+- [Send email](/api-reference/send-email) — request body completo.

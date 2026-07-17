@@ -1,0 +1,140 @@
+---
+title: Adjuntos
+description: "Adjunta archivos (PDF, .ics) a tus envíos por URL o base64."
+---
+
+Adjunta archivos con el endpoint [`POST /send-email`](/api-reference/send-email). Se especifican en el campo `attachments` del cuerpo.
+
+## Estructura del adjunto
+
+Cada elemento del arreglo `attachments` acepta estos campos:
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `filename` | `string` | Sí | Nombre del archivo con extensión (ej. `"factura.pdf"`). |
+| `url` | `string` | Condicional | URL pública del archivo (HTTP o HTTPS). Requerido si no se usa `content`. |
+| `content` | `string` | Condicional | Contenido del archivo codificado en base64. Requerido si no se usa `url`. |
+| `contentType` | `string` | No | Tipo MIME del archivo. Se auto-detecta a partir de la extensión del `filename` si no se especifica. |
+
+Cada adjunto debe incluir `filename` y exactamente uno de `url` o `content`.
+
+## Tipos permitidos
+
+Solo se permiten los siguientes tipos MIME:
+
+- `application/pdf`
+- `text/calendar`
+
+Si el tipo MIME no coincide con estos, el envío falla en segundo plano (ver validación más abajo).
+
+## Limites
+
+| Límite | Valor |
+|---|---|
+| Cantidad máxima de adjuntos | 10 por correo |
+| Tamaño máximo por archivo | 10 MB |
+| Tamaño máximo total | 10 MB |
+
+## Adjuntos por URL
+
+Con el campo `url`, el servidor descarga el archivo antes de enviarlo. Medidas de seguridad:
+
+- **Solo HTTP/HTTPS:** Otros esquemas de URL son rechazados.
+- **Protección SSRF:** Se bloquean las URLs que apuntan a direcciones IP privadas o reservadas.
+- **Timeout:** La descarga tiene un límite de 30 segundos. Si el servidor remoto no responde a tiempo, el envío falla.
+
+## Adjuntos por base64
+
+Con el campo `content`, el valor debe ser el archivo codificado en base64 sin prefijos (sin `data:...;base64,`). Solo el string base64 crudo.
+
+## Validación asíncrona
+
+El endpoint `/send-email` es asíncrono: la respuesta HTTP confirma que el correo quedó encolado, pero los adjuntos se descargan y validan **en segundo plano**. Si un adjunto excede los límites, tiene un tipo MIME no permitido o su URL no es accesible, el envío falla de forma asíncrona y queda en el historial de actividad (`current_status: "failed"`, con el detalle en `error_message`).
+
+Para confirmar el resultado, consulta la [Activity API](/api-reference/activity) con el `email_id`, o suscríbete a [webhooks](/api-reference/webhooks).
+
+## Ejemplos
+
+### Adjunto por URL
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "recipient": "cliente@ejemplo.com",
+    "sender": "ventas@mitienda.com",
+    "senderName": "Mi Tienda",
+    "subject": "Tu factura de octubre",
+    "html": "<p>Adjuntamos tu factura de octubre.</p>",
+    "attachments": [
+      {
+        "filename": "factura-octubre-2026.pdf",
+        "url": "https://storage.ejemplo.com/facturas/factura-octubre-2026.pdf"
+      }
+    ]
+  }'
+```
+
+Respuesta (correo encolado; los adjuntos se procesan en segundo plano):
+
+```json
+{
+  "success": true,
+  "queued": true,
+  "jobId": "email-1780676307345-6da66195",
+  "email_id": "d116a543-9b13-41b4-93cf-647539018275",
+  "activityId": "d116a543-9b13-41b4-93cf-647539018275",
+  "message": "Email queued for sending"
+}
+```
+
+### Adjunto por base64
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "recipient": "cliente@ejemplo.com",
+    "sender": "ventas@mitienda.com",
+    "senderName": "Mi Tienda",
+    "subject": "Invitación a reunión",
+    "html": "<p>Te invitamos a una reunion de equipo.</p>",
+    "attachments": [
+      {
+        "filename": "reunion.ics",
+        "content": "QkVHSU46VkNBTEVOREFSClZFUlNJT046Mi4wCkJFR0lOOlZFVkVOVApEVFNUQVJUOjIwMjUxMDE2VDE1MDAwMFoKRFRFTkQ6MjAyNTEwMTZUMTYwMDAwWgpTVU1NQVJZOlJldW5pb24gZGUgZXF1aXBvCkVORDpWRVZFTlQKRU5EOlZDQUxFTkRBUg==",
+        "contentType": "text/calendar"
+      }
+    ]
+  }'
+```
+
+### Multiples adjuntos
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "recipient": "cliente@ejemplo.com",
+    "sender": "ventas@mitienda.com",
+    "senderName": "Mi Tienda",
+    "subject": "Documentos del proyecto",
+    "html": "<p>Adjuntamos el contrato y la agenda de la reunion.</p>",
+    "attachments": [
+      {
+        "filename": "contrato.pdf",
+        "url": "https://storage.ejemplo.com/docs/contrato.pdf"
+      },
+      {
+        "filename": "agenda.ics",
+        "content": "QkVHSU46VkNBTEVOREFSClZFUlNJT046Mi4wCkVORDpWQ0FMRU5EQVI=",
+        "contentType": "text/calendar"
+      }
+    ]
+  }'
+```
+
+La respuesta usa la misma estructura `queued` del primer ejemplo. El campo `attachments` no se valida en la respuesta HTTP; revisa el estado final con la [Activity API](/api-reference/activity).

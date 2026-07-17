@@ -1,0 +1,887 @@
+---
+title: Dominios
+description: "Registra y verifica dominios de envío, y gestiona sus registros DNS."
+---
+
+Endpoints para gestionar dominios de envío: registro, verificación DNS, estado y perfil de remitente.
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+---
+
+## Autenticacion
+
+Todos los endpoints de dominios requieren Secret Key:
+
+| Header          | Tipo   | Requerido | Descripción                       |
+| --------------- | ------ | --------- | --------------------------------- |
+| `Authorization` | string | Sí        | `Bearer sk_proj_...`              |
+| `Content-Type`  | string | Sí*       | `application/json` (en POST/PUT). |
+
+---
+
+## POST /domains/register
+
+Registra un dominio de envío: crea la identidad de envío, genera los registros DNS y crea el perfil de remitente.
+
+### Request Body
+
+| Campo          | Tipo   | Requerido | Descripción                                                        |
+| -------------- | ------ | --------- | ------------------------------------------------------------------ |
+| `domain`       | string | Sí        | Dominio a registrar (ej. `mitienda.com`).                          |
+| `sender_name`  | string | Sí        | Nombre del remitente (ej. `Mi Tienda`).                            |
+| `sender_email` | string | Sí        | Dirección de correo del remitente. Debe terminar en `@{domain}` (ej. `ventas@mitienda.com`). |
+| `external_key` | string | No        | Clave externa para integraciones de terceros.                      |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/register \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "domain": "mitienda.com",
+    "sender_name": "Mi Tienda",
+    "sender_email": "ventas@mitienda.com"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `201 Created`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mitienda.com",
+  "verification_status": "pending",
+  "sender_profile_id": "123e4567-e89b-12d3-a456-426614174000",
+  "sender": {
+    "from_name": "Mi Tienda",
+    "from_email": "ventas@mitienda.com",
+    "domain_authenticated": false
+  },
+  "verification_token": "abcdef1234567890abcdef1234567890",
+  "dkim_tokens": ["abc123", "def456", "ghi789"],
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "a2b3c4d5-e6f7-4081-92a3-b4c5d6e7f809",
+      "record_type": "CNAME",
+      "name": "abc123._domainkey",
+      "value": "abc123.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800
+    },
+    {
+      "id": "b3c4d5e6-f708-4192-a3b4-c5d6e7f8091a",
+      "record_type": "CNAME",
+      "name": "def456._domainkey",
+      "value": "def456.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800
+    },
+    {
+      "id": "c4d5e6f7-0819-42a3-b4c5-d6e7f8091a2b",
+      "record_type": "CNAME",
+      "name": "ghi789._domainkey",
+      "value": "ghi789.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800
+    },
+    {
+      "id": "d5e6f708-192a-43b4-c5d6-e7f8091a2b3c",
+      "record_type": "TXT",
+      "name": "@",
+      "value": "v=spf1 include:amazonses.com ~all",
+      "purpose": "spf",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "e6f70819-2a3b-44c5-d6e7-f8091a2b3c4d",
+      "record_type": "TXT",
+      "name": "_dmarc",
+      "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@mitienda.com",
+      "purpose": "dmarc",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
+      "record_type": "CNAME",
+      "name": "bounce",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "not_set",
+      "ttl_hint": 300
+    }
+  ]
+}
+```
+
+Cada registro DNS incluye: `id`, `record_type` (`TXT` o `CNAME`), `name`, `value`, `purpose` (`ses_verification`, `dkim`, `spf`, `dmarc`, `return_path`), `status` y `ttl_hint` (TTL sugerido en segundos).
+
+Valores de `status`: `not_set`, `propagating`, `mismatch`, `verified`.
+
+### Registros DNS generados
+
+| # | Tipo | Nombre | Propósito | Notas |
+|---|------|--------|-----------|-------|
+| 1 | TXT | `_amazonses` | Verificación de dominio | Valor generado automáticamente al registrar |
+| 2-4 | CNAME | `{token}._domainkey` | DKIM | 3 registros, tokens generados automáticamente |
+| 5 | TXT | `@` (raíz del dominio) | SPF | `v=spf1 include:amazonses.com ~all` |
+| 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@{domain}` |
+| 7 | CNAME | `bounce` | Return-Path | Apunta a `feedback-smtp.us-east-1.amazonses.com` |
+
+> **Nota:** Los nombres son relativos al dominio. Con dominio `mitienda.com`, el registro `_amazonses` se configura como `_amazonses.mitienda.com`. Algunos proveedores agregan el dominio automáticamente, así que solo ingresas `_amazonses`.
+
+Configura los registros DNS en tu proveedor y llama a `POST /domains/{domain}/verify` para validar. Ver [Deliverability](/concepts/deliverability).
+
+### Codigos de Error
+
+| Código | Descripción                                              |
+| ------ | -------------------------------------------------------- |
+| `400`  | Campos requeridos faltantes, dominio con formato inválido, o `sender_email` no termina en `@{domain}`. |
+| `401`  | API Key inválida.                                        |
+| `409`  | El dominio ya está registrado en este proyecto.          |
+| `500`  | Error interno al registrar el dominio.                   |
+
+---
+
+## GET /domains/:domain/dns-records
+
+Retorna los registros DNS almacenados con su último estado conocido, sin consultas externas.
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Dominio registrado (ej. `mitienda.com`). |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/dns-records \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mitienda.com",
+  "verification_status": "pending",
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "not_set",
+      "ttl_hint": 300,
+      "last_checked_at": null
+    },
+    {
+      "id": "a2b3c4d5-e6f7-4081-92a3-b4c5d6e7f809",
+      "record_type": "CNAME",
+      "name": "abc123._domainkey",
+      "value": "abc123.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800,
+      "last_checked_at": null
+    },
+    {
+      "id": "d5e6f708-192a-43b4-c5d6-e7f8091a2b3c",
+      "record_type": "TXT",
+      "name": "@",
+      "value": "v=spf1 include:amazonses.com ~all",
+      "purpose": "spf",
+      "status": "not_set",
+      "ttl_hint": 300,
+      "last_checked_at": null
+    },
+    {
+      "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
+      "record_type": "CNAME",
+      "name": "bounce",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "not_set",
+      "ttl_hint": 300,
+      "last_checked_at": null
+    }
+  ]
+}
+```
+
+`status` por registro: `not_set`, `propagating`, `mismatch` o `verified`. `last_checked_at` es `null` hasta la primera verificación con `POST /domains/{domain}/verify`.
+
+> **Nota:** SPF y DMARC siempre aparecen con `status: "not_set"`: su propagación no se valida automáticamente.
+
+### Codigos de Error
+
+| Código | Descripción                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | API Key inválida.                               |
+| `404`  | Dominio no encontrado en el proyecto.           |
+
+---
+
+## POST /domains/:domain/verify
+
+Consulta el estado DNS directamente en la infraestructura de envío, actualiza el estado almacenado de los registros y retorna si el dominio puede enviar.
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Dominio registrado (ej. `mitienda.com`). |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/mitienda.com/verify \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mitienda.com",
+  "verification_status": "verified",
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Mi Tienda",
+    "from_email": "ventas@mitienda.com",
+    "domain_authenticated": true
+  },
+  "details": {
+    "domain_verification": "Success",
+    "dkim_verification": "Success",
+    "mail_from_status": "Pending"
+  },
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "verified",
+      "last_checked_at": "2025-03-10T18:45:00.000Z"
+    },
+    {
+      "id": "a2b3c4d5-e6f7-4081-92a3-b4c5d6e7f809",
+      "record_type": "CNAME",
+      "name": "abc123._domainkey",
+      "value": "abc123.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "verified",
+      "last_checked_at": "2025-03-10T18:45:00.000Z"
+    },
+    {
+      "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
+      "record_type": "CNAME",
+      "name": "bounce",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "propagating",
+      "last_checked_at": "2025-03-10T18:45:00.000Z"
+    }
+  ],
+  "verification_token": "abcdef1234567890abcdef1234567890",
+  "dkim_tokens": ["abc123", "def456", "ghi789"],
+  "can_send": true
+}
+```
+
+La verificación comprueba tres aspectos:
+
+1. **Verificación de dominio** — El registro TXT `_amazonses` está configurado.
+2. **DKIM** — Los 3 registros CNAME de DKIM están configurados y propagados.
+3. **MAIL FROM** — El registro CNAME de Return-Path (`bounce`) está configurado.
+
+Campos clave:
+
+| Campo | Descripción |
+|---|---|
+| `verification_status` | `verified` (dominio y DKIM verificados), `failed` (alguna verificación falló) o `pending`. |
+| `details.domain_verification` | Estado crudo de la verificación de dominio: `Success`, `Pending`, `Failed`, `TemporaryFailure` o `NotStarted`. |
+| `details.dkim_verification` | Estado crudo de DKIM (mismos valores). |
+| `details.mail_from_status` | Estado crudo de MAIL FROM (mismos valores). |
+| `sender_profile` | Perfil de remitente activo del dominio, o `null` si no existe. |
+| `can_send` | `true` cuando dominio y DKIM están verificados. |
+
+`can_send` es `true` cuando `details.domain_verification` y `details.dkim_verification` son `Success` (equivalente a `verification_status: "verified"`). MAIL FROM no es obligatorio para enviar, pero mejora la entregabilidad.
+
+### Codigos de Error
+
+| Código | Descripción                                       |
+| ------ | ------------------------------------------------- |
+| `401`  | API Key inválida.                                 |
+| `404`  | Dominio no encontrado en el proyecto.             |
+| `500`  | Error al comunicarse con la infraestructura de envío. |
+
+---
+
+## GET /domains/:domain/status
+
+Retorna el estado de verificación almacenado, sin consultar la infraestructura de envío. Rápido, ideal para polling desde la interfaz.
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Dominio registrado (ej. `mitienda.com`). |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/status \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mitienda.com",
+  "verification_status": "verified",
+  "external_key": null,
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Mi Tienda",
+    "from_email": "ventas@mitienda.com",
+    "domain_authenticated": true
+  },
+  "dns_records_summary": [
+    { "purpose": "ses_verification", "records_count": 1, "all_verified": true },
+    { "purpose": "dkim", "records_count": 3, "all_verified": true },
+    { "purpose": "spf", "records_count": 1, "all_verified": false },
+    { "purpose": "dmarc", "records_count": 1, "all_verified": false },
+    { "purpose": "return_path", "records_count": 1, "all_verified": true }
+  ],
+  "can_send": true,
+  "last_verified_at": "2025-03-10T18:45:00.000Z"
+}
+```
+
+`dns_records_summary` agrupa los registros por propósito: `records_count` es cuántos hay y `all_verified` indica si todos están en `status: "verified"`. `can_send` es `true` cuando `verification_status` es `verified`. `last_verified_at` es la última actualización del estado del dominio.
+
+### Codigos de Error
+
+| Código | Descripción                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | API Key inválida.                               |
+| `404`  | Dominio no encontrado en el proyecto.           |
+
+---
+
+## GET /domains
+
+Busca un dominio por nombre y retorna su información básica y el perfil de remitente.
+
+### Query Parameters
+
+| Parámetro | Tipo   | Requerido | Descripción                          |
+| --------- | ------ | --------- | ------------------------------------ |
+| `domain`  | string | Sí        | Nombre del dominio a buscar.         |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET "https://api.reallyquickemails.com/domains?domain=mitienda.com" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mitienda.com",
+  "verification_status": "verified",
+  "external_key": null,
+  "can_send": true,
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Mi Tienda",
+    "from_email": "ventas@mitienda.com",
+    "domain_authenticated": true
+  },
+  "created_at": "2025-03-01T12:00:00.000Z"
+}
+```
+
+### Codigos de Error
+
+| Código | Descripción                                              |
+| ------ | -------------------------------------------------------- |
+| `400`  | Parámetro `domain` no proporcionado.                     |
+| `401`  | API Key inválida.                                        |
+| `404`  | Dominio no encontrado en el proyecto.                    |
+
+---
+
+## POST /domains/:domain/recreate
+
+Elimina y recrea la identidad de envío del dominio. Útil cuando DKIM queda atascado en estado fallido.
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Dominio registrado (ej. `mitienda.com`). |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/mitienda.com/recreate \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mitienda.com",
+  "verification_status": "pending",
+  "verification_token": "abcdef1234567890abcdef1234567890",
+  "dkim_tokens": ["abc123", "def456", "ghi789"],
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "not_set",
+      "ttl_hint": 300
+    }
+  ],
+  "message": "Domain identity recreated in SES. DNS records may already be propagated - verify in a few seconds."
+}
+```
+
+Conserva el dominio y el perfil de remitente, regenera los registros DNS y reinicia `verification_status` a `pending`. Luego llama a `POST /domains/{domain}/verify`. Si los registros ya estaban propagados, la verificación puede completarse en segundos.
+
+### Codigos de Error
+
+| Código | Descripción                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | API Key inválida.                               |
+| `404`  | Dominio no encontrado en el proyecto.           |
+| `500`  | Error al recrear la identidad de envío.         |
+
+---
+
+## DELETE /domains/:domain
+
+Elimina el dominio de la infraestructura de envío y desactiva su perfil de remitente.
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Dominio a eliminar (ej. `mitienda.com`). |
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/domains/mitienda.com \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "domain": "mitienda.com",
+  "message": "Domain and associated sender profile removed"
+}
+```
+
+El mismo dominio puede registrarse de nuevo más adelante.
+
+> **Advertencia:** Tras eliminarlo, deberás registrar el dominio y configurar los registros DNS de nuevo para enviar desde él.
+
+### Codigos de Error
+
+| Código | Descripción                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | API Key inválida.                               |
+| `404`  | Dominio no encontrado en el proyecto.           |
+
+---
+
+## PUT /domains/:domain/sender
+
+Actualiza el perfil de remitente asociado a un dominio.
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Dominio asociado (ej. `mitienda.com`). |
+
+### Request Body
+
+| Campo          | Tipo   | Requerido | Descripción                                    |
+| -------------- | ------ | --------- | ---------------------------------------------- |
+| `sender_name`  | string | Sí        | Nombre visible del remitente.                  |
+| `sender_email` | string | Sí        | Dirección de correo del remitente. Debe terminar en `@{domain}`. |
+| `reply_email`  | string | No        | Dirección de correo para respuestas (Reply-To).|
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X PUT https://api.reallyquickemails.com/domains/mitienda.com/sender \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "sender_name": "Equipo Mi Tienda",
+    "sender_email": "ventas@mitienda.com",
+    "reply_email": "soporte@mitienda.com"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "sender_profile_id": "123e4567-e89b-12d3-a456-426614174000",
+  "from_name": "Equipo Mi Tienda",
+  "from_email": "ventas@mitienda.com",
+  "domain_authenticated": true
+}
+```
+
+> **Nota:** El campo `reply_email` se guarda pero no se incluye en la respuesta.
+
+### Codigos de Error
+
+| Código | Descripción                                              |
+| ------ | -------------------------------------------------------- |
+| `400`  | Falta `sender_name` o `sender_email`, o `sender_email` no coincide con el dominio. |
+| `401`  | API Key inválida.                                        |
+| `404`  | Dominio o perfil de remitente no encontrado en el proyecto. |
+
+---
+
+## Verificacion de Email (Magic Link)
+
+Alternativa a la verificación de dominio completo: verifica un email individual como remitente sin configurar DNS. Se envía un email de verificación; al hacer clic en el enlace, el email queda verificado para enviar.
+
+> **Nota:** Es más rápida pero no incluye DKIM/SPF. Para mejor deliverability, verifica el dominio completo.
+
+Cuando el estado cambia (de `pending` a `verified` o `failed`), RQE emite el webhook `sender.verified` o `sender.failed`. Ver [Webhooks](/api-reference/webhooks).
+
+---
+
+### POST /domains/verify-email
+
+Inicia la verificación de un email como remitente enviándole un enlace de verificación.
+
+#### Request Body
+
+| Campo          | Tipo   | Requerido | Descripción                                    |
+| -------------- | ------ | --------- | ---------------------------------------------- |
+| `sender_email` | string | Sí        | Email a verificar como remitente.              |
+| `sender_name`  | string | Sí        | Nombre visible del remitente.                  |
+| `external_key` | string | No        | Clave externa para integraciones.              |
+
+#### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/verify-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender_email": "ventas@gmail.com",
+    "sender_name": "Mi Empresa"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `201`
+
+```json
+{
+  "success": true,
+  "identity_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sender_email": "ventas@gmail.com",
+  "verification_status": "pending",
+  "sender_profile_id": "123e4567-e89b-12d3-a456-426614174000",
+  "sender": {
+    "from_name": "Mi Empresa",
+    "from_email": "ventas@gmail.com",
+    "email_verified": false,
+    "domain_authenticated": false
+  },
+  "message": "Verification email sent. The sender must click the link in the email to verify."
+}
+```
+
+El remitente recibirá un email con un enlace. Al hacer clic, su email queda verificado.
+
+#### Errores
+
+| Código | Descripción |
+|---|---|
+| `400` | `sender_email` o `sender_name` faltantes, o formato de email inválido |
+| `401` | API Key inválida |
+| `409` | Email ya registrado en este proyecto |
+
+---
+
+### GET /domains/verify-email/status
+
+Consulta el estado de verificación de un email en la infraestructura de envío en tiempo real.
+
+#### Query Parameters
+
+| Parámetro | Tipo   | Requerido | Descripción                    |
+| --------- | ------ | --------- | ------------------------------ |
+| `email`   | string | Sí        | Email a consultar.             |
+
+#### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/domains/verify-email/status?email=ventas@gmail.com" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200`
+
+```json
+{
+  "success": true,
+  "identity_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sender_email": "ventas@gmail.com",
+  "verification_status": "verified",
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Mi Empresa",
+    "from_email": "ventas@gmail.com",
+    "email_verified": true,
+    "domain_authenticated": false
+  },
+  "can_send": true
+}
+```
+
+`sender_profile` puede ser `null` si no existe un perfil de remitente activo. `can_send` es `true` cuando `verification_status` es `verified`.
+
+#### Estados de verificacion
+
+| Estado | Descripción |
+|---|---|
+| `pending` | Email de verificación enviado, esperando clic del remitente |
+| `verified` | Remitente verificado, listo para enviar |
+| `failed` | Verificación fallida |
+
+#### Errores
+
+| Código | Descripción |
+|---|---|
+| `400` | `email query parameter is required` |
+| `401` | API Key inválida |
+| `404` | Email no encontrado en el proyecto |
+
+---
+
+### POST /domains/verify-email/resend
+
+Reenvía el email de verificación al remitente. Solo válido mientras la verificación está en `pending`.
+
+#### Request Body
+
+| Campo          | Tipo   | Requerido | Descripción                    |
+| -------------- | ------ | --------- | ------------------------------ |
+| `sender_email` | string | Sí        | Email al que reenviar.         |
+
+#### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/verify-email/resend \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender_email": "ventas@gmail.com"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200`
+
+```json
+{
+  "success": true,
+  "message": "Verification email resent",
+  "sender_email": "ventas@gmail.com"
+}
+```
+
+#### Errores
+
+| Código | Descripción |
+|---|---|
+| `400` | `sender_email` faltante, o la verificación no está en estado `pending` |
+| `401` | API Key inválida |
+| `404` | Email no encontrado en el proyecto |
+
+---
+
+### DELETE /domains/verify-email
+
+Elimina un email verificado como remitente; el mismo email puede registrarse de nuevo más adelante.
+
+#### Query Parameters
+
+| Parámetro | Tipo   | Requerido | Descripción                    |
+| --------- | ------ | --------- | ------------------------------ |
+| `email`   | string | Sí        | Email a eliminar.              |
+
+#### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE "https://api.reallyquickemails.com/domains/verify-email?email=ventas@gmail.com" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200`
+
+```json
+{
+  "success": true,
+  "sender_email": "ventas@gmail.com",
+  "message": "Email identity and associated sender profile removed"
+}
+```
+
+#### Errores
+
+| Código | Descripción |
+|---|---|
+| `400` | `email query parameter is required` |
+| `401` | API Key inválida |
+| `404` | Email no encontrado en el proyecto |

@@ -1,0 +1,94 @@
+---
+title: Tracking de eventos
+description: "Cómo funcionan los eventos, el tracking de aperturas y clicks, y las supresiones."
+---
+
+Por cada email que envías, RQE te dispara un webhook con eventos a medida que ocurren. Algunos vienen del proveedor de envío (entrega, rebote); otros los detecta RQE directamente (apertura, click).
+
+## Eventos disponibles
+
+| Evento webhook | Cuándo dispara | Confiabilidad |
+|---|---|---|
+| `email.send` | RQE aceptó el envío y lo despachó | 100% |
+| `email.delivery` | El servidor del destinatario aceptó el email | ~99% |
+| `email.bounce` | Email rebotado (hard o soft) | 100% |
+| `email.complaint` | Destinatario marcó como spam | 100% |
+| `email.deliverydelay` | Entrega temporalmente demorada | 100% |
+| `email.open` | Destinatario abrió el email | ~70% |
+| `email.click` | Destinatario hizo click en un link | ~99% |
+| `email.inbound` | Destinatario respondió tu email (solo envíos vía API) | 100% |
+
+También existe `email.reject` (envío rechazado antes de salir). El detalle de cada evento y sus campos está en la [referencia de Webhooks](/api-reference/webhooks#eventos).
+
+## Bounces — soft vs hard
+
+| Tipo | Descripción | Acción de RQE |
+|---|---|---|
+| **Hard bounce** | Dirección no existe (`550 5.1.1`) | Agrega el destinatario a la suppression list — los próximos envíos se omiten automáticamente |
+| **Soft bounce** | Mailbox lleno, server temporalmente caído | Marca el evento, no agrega a suppression. Puedes volver a enviar |
+
+Las quejas (`email.complaint`) también agregan al destinatario a la suppression list automáticamente.
+
+<Warning>
+  Sobre **2%** de bounces, tu deliverability se degrada. Sobre **5%**, el proveedor puede suspender tu envío. Limpia tu lista: un email viejo es un bounce esperando suceder.
+</Warning>
+
+## Open tracking
+
+RQE inyecta un pixel 1x1 transparente en el HTML. Cuando el cliente del destinatario carga las imágenes, dispara `email.open`.
+
+### Por qué la confiabilidad es ~70%
+
+- **Outlook desktop** bloquea imágenes externas por default → no detecta open
+- **Apple Mail iOS 15+** con MPP (Mail Privacy Protection) carga el pixel automáticamente al recibir → reporta open antes de que el usuario abra realmente
+- **Clientes de texto plano** → no cargan imágenes
+
+<Info>
+  **Trata los opens como aproximados**
+
+  Los opens son señal de tendencia (¿este send lo abre más gente que aquel?), no de comportamiento individual exacto. Para conversión real, mira los clicks.
+</Info>
+
+## Click tracking
+
+Antes de enviar, RQE reescribe los `<a href>` del HTML para que pasen por un endpoint de tracking que hace 302 redirect al destino original. El redirect es instantáneo, el usuario no nota nada. Solo falla si copia/pega el href manual (extremadamente raro).
+
+## Webhook payload
+
+Tu `webhook_url` recibe un POST con firma HMAC-SHA256 en el header `X-RQE-Signature`, firmada con tu API key del proyecto. Ejemplo de body para `email.delivery`:
+
+```json
+{
+  "event": "email.delivery",
+  "is_test": false,
+  "timestamp": "2026-04-29T15:30:42.123Z",
+  "project_id": "...",
+  "data": {
+    "activity_id": "...",
+    "message_id": "...",
+    "recipient": "user@example.com",
+    "event_type": "delivery",
+    "event_timestamp": "2026-04-29T15:30:42.000Z"
+  }
+}
+```
+
+Para el shape completo por tipo de evento, ver [Webhooks → Payload outbound](/api-reference/webhooks#payload-outbound).
+
+### Verificación HMAC en Node
+
+```javascript
+const crypto = require('crypto');
+const expected = 'sha256=' + crypto
+  .createHmac('sha256', apiKey)
+  .update(rawBody)
+  .digest('hex');
+if (req.headers['x-rqe-signature'] !== expected) {
+  return res.status(401).send('Invalid signature');
+}
+```
+
+## Próximos pasos
+
+- [Webhooks](/api-reference/webhooks) — referencia completa con todos los formatos.
+- [Test mode](/concepts/test-mode) — separar tracking dev vs prod.

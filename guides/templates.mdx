@@ -1,0 +1,329 @@
+---
+title: Templates y Variables
+description: "Variables, condicionales, loops y helpers Handlebars que se resuelven al enviar."
+---
+
+Crea correos dinámicos con variables, condicionales, loops y helpers de formateo que se resuelven al enviar. Hay dos formas de enviar con variables, cada una con su propio motor de renderizado:
+
+| Endpoint | Campo de variables | Motor |
+|---|---|---|
+| [`POST /v1/send-template-email`](/api-reference/public-api#post-v1send-template-email) | `variables` | Sustitución simple: `{var}` o `{{var}}`, fallbacks con valor por defecto y loops `{{#each}}` |
+| [`POST /send-email`](/api-reference/send-email) (API avanzada) | `data` | Handlebars completo: condicionales `{{#if}}`, helpers y propiedades anidadas |
+
+---
+
+## Conceptos basicos
+
+### Variables
+
+Inserta valores dinámicos en tu template con `{{nombreVariable}}`.
+
+**En el template:**
+
+```html
+<h1>Hola, {{nombre}}!</h1>
+<p>Tu cuenta en {{empresa}} ha sido creada exitosamente.</p>
+```
+
+**En el request body (API pública v1):**
+
+```json
+{
+  "template_id": "550e8400-e29b-41d4-a716-446655440000",
+  "variables": {
+    "nombre": "Carlos",
+    "empresa": "TechStore"
+  }
+}
+```
+
+**Resultado renderizado:**
+
+```html
+<h1>Hola, Carlos!</h1>
+<p>Tu cuenta en TechStore ha sido creada exitosamente.</p>
+```
+
+En `/v1/send-template-email` (campo `variables`), además:
+
+- `{nombreVariable}` con llave simple es equivalente a `{{nombreVariable}}`.
+- Puedes definir un fallback con `{variable || "valor por defecto"}` para cuando la variable no existe.
+- Los valores se escapan como HTML por defecto; usa `{!variable}` para insertar HTML sin escapar.
+- Las variables sin valor (y sin fallback) se renderizan como cadena vacía.
+
+En la API avanzada (`/send-email`, campo `data`) usa siempre doble llave `{{variable}}`. La llave simple y los fallbacks `||` no están disponibles, y los valores se insertan sin escape HTML.
+
+---
+
+### Condicionales
+
+> Disponibles solo en la **API avanzada** (`POST /send-email`, campo `data`). `/v1/send-template-email` no soporta bloques `{{#if}}`.
+
+Usa `{{#if variable}}...{{/if}}` para mostrar contenido solo cuando una variable existe y es truthy. Usa `{{else}}` para el caso contrario.
+
+**En el template:**
+
+```html
+{{#if premium}}
+  <p>Gracias por ser miembro Premium. Tienes envío gratuito en todos tus pedidos.</p>
+{{else}}
+  <p>Actualiza a Premium para obtener envío gratuito.</p>
+{{/if}}
+```
+
+**En el request body:**
+
+```json
+{
+  "data": {
+    "premium": true
+  }
+}
+```
+
+> **Nota:** Handlebars evalúa como falsy los valores `false`, `undefined`, `null`, `""`, `0` y arrays vacíos `[]`.
+
+---
+
+### Loops
+
+Usa `{{#each arreglo}}...{{/each}}` para iterar sobre una lista. Disponible en ambas APIs, con distinta sintaxis dentro del bloque.
+
+**En la API avanzada** (`/send-email`, campo `data`), `{{this}}` es el elemento actual. Accede a sus propiedades con `{{this.propiedad}}` y usa helpers:
+
+```html
+<table>
+  <tr>
+    <th>Producto</th>
+    <th>Cantidad</th>
+    <th>Precio</th>
+  </tr>
+  {{#each productos}}
+  <tr>
+    <td>{{this.nombre}}</td>
+    <td>{{this.cantidad}}</td>
+    <td>{{formatCurrency this.precio}}</td>
+  </tr>
+  {{/each}}
+</table>
+```
+
+**En el request body:**
+
+```json
+{
+  "data": {
+    "productos": [
+      { "nombre": "Camiseta Azul", "cantidad": 2, "precio": 15990 },
+      { "nombre": "Pantalon Negro", "cantidad": 1, "precio": 29990 },
+      { "nombre": "Zapatillas Blancas", "cantidad": 1, "precio": 45990 }
+    ]
+  }
+}
+```
+
+**Variables especiales dentro de loops (API avanzada):**
+
+| Variable         | Descripción                                 |
+| ---------------- | ------------------------------------------- |
+| `{{this}}`       | El elemento actual de la iteración          |
+| `{{@index}}`     | Índice del elemento (comienza en 0)         |
+| `{{@first}}`     | `true` si es el primer elemento             |
+| `{{@last}}`      | `true` si es el último elemento             |
+| `{{@key}}`       | La clave actual (cuando se itera un objeto) |
+
+**En `/v1/send-template-email`** (campo `variables`), las propiedades del elemento actual se exponen directamente: usa `{{nombre}}`, no `{{this.nombre}}` (la notación `this.` no está soportada). Variables especiales: `@index`, `@first`, `@last`, `@odd` y `@even`. No hay helpers de formateo: envía los valores ya formateados.
+
+---
+
+## Helpers integrados
+
+RQE incluye helpers de Handlebars adicionales para formateo común en correos transaccionales.
+
+> Los helpers están disponibles solo en la **API avanzada** (`POST /send-email`, campo `data`). En `/v1/send-template-email` envía los valores ya formateados.
+
+### `formatCurrency`
+
+Formatea un número como moneda con formato `en-US`. Por defecto usa USD. Acepta un segundo parámetro opcional para la moneda.
+
+```html
+<p>Total: {{formatCurrency total}}</p>
+```
+
+Con `"total": 61970` produce: `$61,970.00`
+
+Para usar otra moneda:
+
+```html
+<p>Total: {{formatCurrency total "CLP"}}</p>
+```
+
+### `multiply`
+
+Multiplica dos valores numéricos. El resultado se redondea a 2 decimales.
+
+```html
+<p>Subtotal: {{formatCurrency (multiply cantidad precio)}}</p>
+```
+
+### `formatDate`
+
+Formatea una fecha ISO 8601 a un formato legible en español (`es-ES`). Acepta un segundo parámetro opcional para el formato.
+
+**Formato por defecto (`short`):**
+
+```html
+<p>Fecha: {{formatDate fechaEntrega}}</p>
+```
+
+Con `"fechaEntrega": "2025-03-15T00:00:00Z"` produce: `15/3/2025`
+
+**Formato largo (`long`):**
+
+```html
+<p>Fecha: {{formatDate fechaEntrega "long"}}</p>
+```
+
+Con `"fechaEntrega": "2025-03-15T00:00:00Z"` produce: `sábado, 15 de marzo de 2025`
+
+### `default`
+
+Proporciona un valor por defecto cuando la variable es falsy (`undefined`, `null`, `""`, `0` o `false`).
+
+```html
+<p>Hola, {{default nombre "Cliente"}}!</p>
+```
+
+Si `nombre` no está definido en `data`, se renderiza como `Hola, Cliente!`.
+
+### `json`
+
+Serializa un objeto a JSON con indentación. Útil para depurar o incluir datos estructurados en el correo.
+
+```html
+<pre>{{json datos}}</pre>
+```
+
+Con `"datos": {"clave": "valor"}` produce:
+
+```json
+{
+  "clave": "valor"
+}
+```
+
+También están disponibles los helpers de texto `capitalize`, `uppercase` y `lowercase` para transformar strings.
+
+---
+
+## Identificar un template
+
+Puedes referenciar un template de dos formas en la API pública (`/v1/send-template-email`):
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `template_id` | string (UUID) | UUID único del template |
+| `template_internal_id` | number | ID interno auto-incrementado (por proyecto) |
+
+```json
+{
+  "template_id": "550e8400-e29b-41d4-a716-446655440000",
+  "recipient_email": "usuario@ejemplo.com",
+  "sender_email": "tienda@tudominio.com",
+  "variables": {
+    "nombre": "Ana",
+    "numeroPedido": "5021"
+  }
+}
+```
+
+- Si el template no existe, la API retorna un error `404`.
+- `template_internal_id` se resuelve dentro del proyecto asociado a la API key utilizada.
+
+En la API avanzada (`/send-email`), el campo `templateId` acepta el UUID del template o su ID interno numérico, siempre dentro del proyecto asociado a la API key.
+
+---
+
+## El objeto `variables`
+
+En `/v1/send-template-email`, el objeto `variables` es un JSON donde cada clave es una variable del template. Los valores se convierten a string al renderizar. Las variables que el template usa pero que no existen se renderizan como cadena vacía (o con su fallback `||` si está definido).
+
+### Ejemplo completo
+
+**Request:**
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template_id": "550e8400-e29b-41d4-a716-446655440000",
+    "recipient_email": "juan.perez@ejemplo.com",
+    "sender_email": "pedidos@mitienda.com",
+    "variables": {
+      "nombre": "Juan",
+      "numeroPedido": "3847",
+      "fechaCompra": "20 de febrero de 2026",
+      "productos": [
+        { "producto": "Audifonos Bluetooth", "cantidad": 1, "precio": "$34.990" },
+        { "producto": "Cable USB-C", "cantidad": 3, "precio": "$5.990" }
+      ],
+      "total": "$52.960"
+    }
+  }'
+```
+
+**Template correspondiente (sintaxis v1):**
+
+```html
+<h1>Gracias por tu compra, {{nombre}}!</h1>
+<p>Pedido #{{numeroPedido}} - {{fechaCompra}}</p>
+
+<table>
+  {{#each productos}}
+  <tr>
+    <td>{{producto}}</td>
+    <td>x{{cantidad}}</td>
+    <td>{{precio}}</td>
+  </tr>
+  {{/each}}
+</table>
+
+<p><strong>Total: {{total}}</strong></p>
+<p>Atendido por: {vendedor || "nuestro equipo"}</p>
+```
+
+Este motor no incluye helpers de formateo: envía precios y fechas ya formateados como strings. Para condicionales, helpers o propiedades anidadas, usa la API avanzada (`POST /send-email`) con `templateId` + `data`.
+
+---
+
+## Acceso a propiedades anidadas
+
+En la API avanzada (`/send-email`, campo `data`), usa notación de punto para acceder a objetos anidados:
+
+```html
+<p>Ciudad: {{direccion.ciudad}}</p>
+<p>Región: {{direccion.region}}</p>
+```
+
+```json
+{
+  "data": {
+    "direccion": {
+      "ciudad": "Santiago",
+      "region": "Metropolitana"
+    }
+  }
+}
+```
+
+En `/v1/send-template-email` la notación de punto **no** está soportada: aplana las variables antes de enviarlas (por ejemplo `direccion_ciudad` en lugar de `direccion.ciudad`).
+
+---
+
+## Buenas practicas
+
+- **Define valores por defecto para variables opcionales:** en la API avanzada usa el helper `default`; en v1 usa fallbacks `{variable || "valor"}`. Así evitas espacios vacíos en el correo.
+- **Valida tus variables antes de enviar.** Las variables que el template espera pero no existen se renderizan como cadenas vacías, sin error.
+- **Guarda el `template_id` (UUID) en tu configuración**, o usa `template_internal_id` si prefieres IDs numéricos cortos por proyecto.
+- **Prueba tus templates** con datos de ejemplo antes de integrar. En la API avanzada usa `dry_run: true` para renderizar sin enviar — ver [Dry Run](/api-reference/send-email#dry-run).
