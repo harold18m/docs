@@ -1,20 +1,80 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: Introducción
+description: La API de email para desarrolladores — transaccionales y campañas masivas con una sola llamada HTTP.
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+## Tu primer email
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "usuario@ejemplo.com",
+    "sender_email": "hola@tudominio.com",
+    "subject": "Hola desde ReallyQuickEmails",
+    "html_body": "<h1>Hola</h1><p>Mi primer email con RQE.</p>"
+  }'
+```
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
+Respuesta exitosa (`200`):
+
+```json
+{
+  "message": "Email sent successfully",
+  "email_id": "550e8400-e29b-41d4-a716-446655440000",
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+`email_id` identifica el envío: úsalo para consultar su estado en [Activity](/api-reference/activity) y correlacionar los eventos que llegan a tus [webhooks](/api-reference/webhooks). El `sender_email` debe pertenecer a un [dominio verificado](/api-reference/domains).
+
+<Info>
+  Para desarrollo usa tu key `sk_test_*`: el email se envía de verdad (puedes probar render y deliverability), pero queda marcado con `is_test: true` y separado de tus métricas de producción. Detalle en [Modos Live y Test](/concepts/test-mode).
+</Info>
+
+## Lo esencial
+
+| | |
+|---|---|
+| **Base URL** | `https://api.reallyquickemails.com` |
+| **Autenticación** | Header `Authorization: Bearer <api_key>` en todos los endpoints |
+| **Formato** | JSON — `Content-Type: application/json` |
+| **API keys** | `sk_proj_*` y `sk_live_*` (producción) · `sk_test_*` ([modo de prueba](/concepts/test-mode)) |
+| **SDK oficial** | [`@reallyquickemails/sdk`](/guides/sdk-nodejs) para Node.js / TypeScript |
+
+## Para agentes IA
+
+Esta documentación está optimizada para consumo por LLMs:
+
+- [`/llms.txt`](/llms.txt) — índice de todas las páginas con sus descripciones.
+- [`/llms-full.txt`](/llms-full.txt) — todo el contenido de la documentación en un solo archivo.
+- Agrega el sufijo `.mdx` a la URL de cualquier página para obtener su markdown crudo — por ejemplo, [`/api-reference/public-api.mdx`](/api-reference/public-api.mdx). Los clientes que envían `Accept: text/markdown` reciben markdown directamente.
+
+## Siguientes pasos
+
+<Columns cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/guides/quickstart">
+  De cero a tu primer email enviado en menos de 5 minutos, con la Test key.
 </Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
+  <Card title="SDK de Node.js" icon="package" href="/guides/sdk-nodejs">
+  @reallyquickemails/sdk — emails, leads, automations, events y senders con tipos TypeScript.
 </Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
+  <Card title="API Keys (Live vs Test)" icon="key-round" href="/guides/api-keys">
+  Prefijos sk_proj_ / sk_live_ / sk_test_, idempotencia y dry run.
 </Card>
+  <Card title="Webhooks" icon="webhook" href="/api-reference/webhooks">
+  Eventos de entrega e inbound replies, verificación HMAC y routing Live/Test.
+</Card>
+  <Card title="Templates y variables" icon="file-text" href="/guides/templates">
+  Variables, condicionales, loops y helpers que se resuelven al momento del envío.
+</Card>
+  <Card title="Envío masivo" icon="layers" href="/api-reference/public-api">
+  POST /v1/send-batch — hasta 10,000 destinatarios con variables por destinatario.
+</Card>
+  <Card title="Programar envíos" icon="clock" href="/guides/scheduling">
+  scheduled_at con ISO 8601 o lenguaje natural en inglés y zonas IANA.
+</Card>
+</Columns>
+
+¿Preguntas? Escríbenos a [soporte@reallyquickemails.com](mailto:soporte@reallyquickemails.com) o consulta las [preguntas frecuentes](/guides/faq).

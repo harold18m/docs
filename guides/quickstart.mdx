@@ -1,0 +1,153 @@
+---
+title: Quickstart
+description: "De cero a tu primer email en menos de 5 minutos, con la Test key."
+---
+
+De cero a tu primer email en menos de 5 minutos. Usarás la **Test key**: envía emails reales, marcados como test para no contaminar tus métricas de producción.
+
+<Info>
+  Si todavía no tienes cuenta, regístrate en [app.reallyquickemails.com](https://app.reallyquickemails.com). Necesitas un dominio verificado para enviar; ver [guía de dominios](/api-reference/domains).
+</Info>
+
+<Steps>
+
+<Step title="Obtener tu Test API Key">
+
+1. Ingresa al [dashboard](https://app.reallyquickemails.com).
+2. Selecciona tu proyecto.
+3. En el menú lateral, abre **Integraciones → API Keys**.
+4. Copia la **Test key** (`sk_test_*`). Si después necesitas tráfico productivo, repite con la **Live key** (`sk_live_*` o `sk_proj_*`).
+
+Guárdala como variable de entorno:
+
+```bash
+export RQE_API_KEY="sk_test_tu_test_key"
+```
+
+<Warning>
+  No hardcodees keys en código del lado del cliente. Úsalas solo desde backend.
+</Warning>
+
+</Step>
+
+<Step title="Enviar tu primer email">
+
+Usa `POST /v1/send-email` con HTML directo:
+
+<Tabs>
+
+<Tab title="curl">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer $RQE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "tu@email.com",
+    "sender_email": "noreply@tudominio.com",
+    "sender_name": "Tu Empresa",
+    "subject": "Hola desde ReallyQuickEmails",
+    "html_body": "<h1>¡Hola!</h1><p>Este es mi primer email.</p>"
+  }'
+```
+
+</Tab>
+
+<Tab title="JavaScript">
+
+```javascript
+const res = await fetch('https://api.reallyquickemails.com/v1/send-email', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.RQE_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    recipient_email: 'tu@email.com',
+    sender_email: 'noreply@tudominio.com',
+    sender_name: 'Tu Empresa',
+    subject: 'Hola desde ReallyQuickEmails',
+    html_body: '<h1>¡Hola!</h1><p>Este es mi primer email.</p>',
+  }),
+});
+
+const data = await res.json();
+console.log(data); // { message: 'Email sent successfully', email_id: '...', project_id: '...' }
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import os, requests
+
+res = requests.post(
+    'https://api.reallyquickemails.com/v1/send-email',
+    headers={
+        'Authorization': f"Bearer {os.environ['RQE_API_KEY']}",
+        'Content-Type': 'application/json',
+    },
+    json={
+        'recipient_email': 'tu@email.com',
+        'sender_email': 'noreply@tudominio.com',
+        'sender_name': 'Tu Empresa',
+        'subject': 'Hola desde ReallyQuickEmails',
+        'html_body': '<h1>¡Hola!</h1><p>Este es mi primer email.</p>',
+    },
+)
+print(res.json())
+```
+
+</Tab>
+
+</Tabs>
+
+</Step>
+
+<Step title="Validar la respuesta">
+
+Una respuesta exitosa retorna `200 OK` con:
+
+```json
+{
+  "message": "Email sent successfully",
+  "email_id": "550e8400-e29b-41d4-a716-446655440000",
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+Errores comunes:
+
+| Status | Causa | Solución |
+|---|---|---|
+| `401` | API key inválida o sin prefijo correcto | Verifica `Authorization: Bearer sk_test_...` |
+| `400` | Falta campo requerido | Revisa `recipient_email`, `sender_email`, `html_body` |
+
+Un `sender_email` no verificado **no** produce error síncrono: el request responde `200` y el envío falla en segundo plano. Revisa el estado en Activity y verifica tu dominio en [Dominios](/api-reference/domains).
+
+</Step>
+
+<Step title="Validar el envío en el dashboard">
+
+En **Activity** del dashboard, verás el envío marcado con `is_test=true` (porque usaste `sk_test_*`).
+
+Al abrir el email, el evento `email.open` llega al `webhook_url_dev` de tu proyecto si está configurado. Ver [Webhooks](/api-reference/webhooks).
+
+</Step>
+
+</Steps>
+
+## Próximos pasos
+
+<Info>
+  **Listo para producción**
+
+  Repite el envío con `sk_live_*` (o `sk_proj_*`) cuando quieras enviar a clientes reales. Configura `webhook_url` y `inbound_webhook_url` en tu proyecto.
+</Info>
+
+- **[Templates con variables](/guides/templates)** — Handlebars, `{{variables}}`, helpers.
+- **[Programar envíos](/guides/scheduling)** — fechas futuras con timezones.
+- **[Adjuntos](/guides/attachments)** — PDFs, .ics calendar events.
+- **[Send batch](/api-reference/public-api)** — hasta 10,000 destinatarios por request.
+- **[Webhooks](/api-reference/webhooks)** — recibir eventos `email.delivery`, `email.open`, `email.click`, `email.bounce`.

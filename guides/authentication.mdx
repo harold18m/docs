@@ -1,0 +1,84 @@
+---
+title: Autenticación
+description: "Autentícate con Bearer y tu Secret Key en el header Authorization."
+---
+
+Todos los endpoints usan el mismo método: **Bearer Token** con tu Secret Key.
+
+---
+
+## Bearer Token
+
+Envía tu **Secret Key** (`sk_proj_...`) en el header `Authorization`:
+
+```
+Authorization: Bearer sk_proj_tu_secret_key
+```
+
+Este patrón funciona para **todos** los endpoints:
+
+- **Envío:** `POST /v1/send-email`, `POST /v1/send-template-email`, `POST /v1/send-batch`, `POST /send-email`
+- **Dominios:** `POST /domains/register`, `GET /domains/:domain/dns-records`, `POST /domains/:domain/verify`, `GET /domains/:domain/status`, `GET /domains?domain=`, `POST /domains/:domain/recreate`, `DELETE /domains/:domain`, `PUT /domains/:domain/sender`, `POST /domains/verify-email`, `GET /domains/verify-email/status`
+- **Activity:** `GET /v1/activity`, `GET /v1/activity/:id`
+- **Datos:** `POST /v1/leads`, `POST /v1/events` (y el resto de la [API de leads y eventos](/api-reference/leads))
+
+### Ejemplo
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_tu_secret_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "cliente@ejemplo.com",
+    "sender_email": "ventas@tudominio.com",
+    "subject": "Confirmación de pedido",
+    "html_body": "<h1>Pedido confirmado</h1>"
+  }'
+```
+
+### Como funciona
+
+1. El servidor extrae la Secret Key del header `Authorization`
+2. Valida la key y resuelve el proyecto asociado
+3. Si la key es válida, el `projectId` se deriva automáticamente — no necesitas enviarlo
+
+---
+
+## Donde encontrar tu Secret Key
+
+1. Ingresa al [dashboard de RQE](https://app.reallyquickemails.com).
+2. Selecciona tu proyecto.
+3. En el menú lateral, abre **Integraciones → API Keys**.
+4. Copia tu **Secret Key** (comienza con `sk_proj_`).
+
+Ahí también encuentras la **Test key** (`sk_test_*`). Ver [API Keys](/guides/api-keys) para las diferencias entre modo Live y Test.
+
+---
+
+## Respuestas de error
+
+**Key faltante o formato incorrecto (401):**
+
+```json
+{
+  "error": "Missing or invalid API key. Use: Authorization: Bearer sk_proj_..."
+}
+```
+
+**Key inválida (401):**
+
+```json
+{
+  "error": "Invalid API key"
+}
+```
+
+---
+
+## Errores comunes
+
+| Código | Causa                                             | Solución                                          |
+| ------ | ------------------------------------------------- | ------------------------------------------------- |
+| `401`  | Falta el header `Authorization`                   | Agrega `Authorization: Bearer sk_proj_...`         |
+| `401`  | Formato incorrecto (sin "Bearer " o sin prefijo `sk_`) | Asegúrate de usar `Bearer sk_proj_...` con espacio |
+| `401`  | Key inválida o revocada                           | Regenérala desde **Integraciones → API Keys** en el dashboard |

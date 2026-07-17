@@ -1,0 +1,280 @@
+---
+title: Webhooks
+description: "Recibe eventos de entrega e inbound en tu servidor, verificados con HMAC."
+---
+
+RQE dispara un webhook por cada evento de un email: aceptación, entrega, rebote, queja, apertura, click, supresión y respuesta del destinatario.
+
+## Cómo recibir webhooks
+
+<Steps>
+
+<Step title="Configura la URL en el dashboard">
+
+Abre tu proyecto y ve a **Configuración → Integraciones → Webhooks**. Pega la URL pública de tu endpoint. Las URLs por proyecto y qué recibe cada una están en [Routing live / test / environment](#routing-live--test--environment).
+
+</Step>
+
+<Step title="Expón tu endpoint local">
+
+En desarrollo, crea un túnel a tu servidor local con [ngrok](https://ngrok.com) (`ngrok http 3000`) y usa la URL pública generada como URL del webhook.
+
+</Step>
+
+<Step title="Valida la firma">
+
+Cada POST incluye el header `X-RQE-Signature`. Verifica el HMAC sobre el body raw antes de procesar el evento. Ver más en [Verificación HMAC](#verificación-hmac).
+
+</Step>
+
+<Step title="Responde 200">
+
+Devuelve un status `2xx` cuanto antes. Cualquier otro status, timeout o error de red activa reintentos. Ver [Retry y respuesta esperada](#retry-y-respuesta-esperada).
+
+</Step>
+
+<Step title="Pasa a producción">
+
+Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload distingue el tráfico de envíos con `sk_test_*`.
+
+</Step>
+
+</Steps>
+
+## Eventos
+
+| `event` | Cuándo dispara | Datos extra en `data` |
+|---|---|---|
+| `email.send` | RQE aceptó y despachó el envío | — |
+| `email.delivery` | El servidor del destinatario aceptó el email | — |
+| `email.bounce` | Email rebotado | `bounce_type`, `bounce_subtype` |
+| `email.complaint` | Destinatario marcó como spam | `complaint_feedback_type` |
+| `email.reject` | Envío rechazado antes de salir | — |
+| `email.deliverydelay` | Entrega temporalmente demorada | — |
+| `email.open` | Destinatario abrió el email (pixel cargado) | — |
+| `email.click` | Click en un link | `url_clicked` |
+| `email.suppressed` | El destinatario está en la lista de supresión — el envío se bloqueó antes de salir | `email`, `suppressed_at` (ver [nota](#emailsuppressed)) |
+| `email.inbound` | Destinatario respondió tu email | (ver sección Replies) |
+
+## Payload outbound
+
+Todos los eventos outbound (`email.send`, `email.delivery`, `email.bounce`, `email.complaint`, `email.reject`, `email.deliverydelay`, `email.open`, `email.click`) comparten la misma estructura top-level. Solo cambia `data`.
+
+```json
+{
+  "event": "email.delivery",
+  "timestamp": "2026-04-29T15:30:42.123Z",
+  "project_id": "uuid",
+  "is_test": false,
+  "environment": "staging",
+  "data": { "...": "..." }
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `event` | string | Tipo del evento (ver tabla arriba). |
+| `timestamp` | string ISO | Momento en que RQE despachó el webhook. |
+| `project_id` | uuid | Tu proyecto. |
+| `is_test` | boolean | `true` si el email se envió con `sk_test_*`. |
+| `environment` | string | (Opcional) presente solo si el envío incluyó `environment`. Ver [Webhook environments](/concepts/webhook-environments). |
+| `data` | object | Detalle del evento (ver siguiente tabla). |
+
+### Campos de `data`
+
+| Campo | Presente en | Descripción |
+|---|---|---|
+| `activity_id` | todos | UUID del email original (lo recibes en la respuesta de `/v1/send-email`). |
+| `message_id` | todos, salvo algunos `open`/`click` | Message-ID asignado al email. Los `open`/`click` registrados por el tracking propio de RQE (pixel/redirect) no lo incluyen — usa `activity_id` como identificador estable. |
+| `recipient` | todos | Email del destinatario. |
+| `event_type` | todos | Tipo lowercase (`delivery`, `bounce`, `open`, `click`, ...). Equivale a `event` sin `email.`. |
+| `event_timestamp` | todos | ISO timestamp del evento real (distinto del top-level `timestamp` que es cuando RQE lo despachó). |
+| `bounce_type` | bounce | `Permanent` o `Transient`. |
+| `bounce_subtype` | bounce | `General`, `NoEmail`, `Suppressed`, etc. |
+| `complaint_feedback_type` | complaint | `abuse`, `auth-failure`, `fraud`, `not-spam`, `other`, `virus`. |
+| `url_clicked` | click | URL original a la que el destinatario hizo click. |
+
+> **Nota:** los eventos `email.send` y `email.delivery` no incluyen un campo `delivered_at` separado — usa `event_timestamp`.
+
+### `email.suppressed`
+
+Se emite cuando envías vía API a una dirección que está en la lista de supresión del proyecto (rebote duro o queja previos): el correo **se bloquea antes de salir** y la respuesta de `/v1/send-email` ya lo indica con `suppressed: true` (ver [Destinatario suprimido](/api-reference/send-email#destinatario-suprimido)). Úsalo para marcar la dirección en tu sistema y dejar de intentar.
+
+Particularidades vs los demás eventos outbound:
+
+- Solo se emite para envíos vía **API** — campañas y automatizaciones no lo disparan.
+- Su payload es reducido: el top-level no incluye `is_test` ni `environment`, y `data` trae solo `email`, `activity_id`, `email_type` y `suppressed_at` (no hay `message_id` — el correo nunca salió).
+
+```json
+{
+  "event": "email.suppressed",
+  "timestamp": "2026-07-05T22:30:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "email": "destinatario@ejemplo.com",
+    "activity_id": "uuid",
+    "email_type": "individual",
+    "suppressed_at": "2026-07-05T22:30:00.000Z"
+  }
+}
+```
+
+## Headers de la request
+
+RQE hace POST a tu URL con:
+
+| Header | Valor |
+|---|---|
+| `Content-Type` | `application/json` |
+| `User-Agent` | `ReallyQuickEmails-Webhook/1.0` |
+| `X-RQE-Signature` | `sha256=<hmac_hex>` — HMAC-SHA256 del body raw, secret = tu API key de producción (`sk_proj_*`), incluso para eventos de envíos test |
+| `X-RQE-Environment` | `live`, `dev`, o el nombre del [environment custom](/concepts/webhook-environments) si aplica. Solo en eventos outbound — el POST de `email.inbound` no incluye este header |
+
+### Verificación HMAC
+
+```javascript
+const crypto = require('crypto');
+const expected = 'sha256=' + crypto
+  .createHmac('sha256', apiKey)
+  .update(rawBody)
+  .digest('hex');
+if (req.headers['x-rqe-signature'] !== expected) {
+  return res.status(401).send('Invalid signature');
+}
+```
+
+> **Importante:** verifica la firma sobre el body **raw**, antes de cualquier parser JSON. Si el body cambia (espacios, orden de keys), el HMAC no va a coincidir.
+
+## Routing live / test / environment
+
+Cada proyecto tiene URLs configurables:
+
+| URL | Recibe |
+|---|---|
+| `webhook_url` (Producción) | Todos los eventos outbound — live **y** test |
+| `webhook_url_dev` (Desarrollo) | Todos los eventos outbound — live **y** test |
+| `webhook_environments[<key>]` | Solo eventos de envíos que incluyeron `environment: "<key>"` en el body (override: las demás URLs no reciben ese envío) |
+
+Sin `environment` custom, cada evento outbound se entrega a **todas las URLs configuradas** (Producción y Desarrollo a la vez): el routing no filtra por modo del envío. El header `X-RQE-Environment` indica el slot de cada POST (`live` / `dev`); el flag `is_test` del payload dice si el envío usó `sk_test_*`.
+
+Si configuras `inbound_webhook_url` / `inbound_webhook_url_dev`, esas URLs **reemplazan** a `webhook_url` / `webhook_url_dev` y reciben todos los eventos (outbound + inbound) — modelo "una URL recibe todo".
+
+Los webhooks **inbound** (replies) van a **una sola URL** según el modo del envío original (ver fallback abajo). El override por environment usa `inbound_webhook_environments[<key>]`.
+
+### Fallback automático
+
+Aplica solo a `email.inbound`; los eventos outbound no tienen fallback porque van a todas las URLs configuradas. RQE usa la primera URL no vacía de esta cadena:
+
+- Envío original con `sk_test_*`: `inbound_webhook_url_dev` → `webhook_url_dev` → `inbound_webhook_url` → `webhook_url`
+- Envío original live: `inbound_webhook_url` → `webhook_url` → `inbound_webhook_url_dev` → `webhook_url_dev`
+
+Si ninguna URL está configurada (outbound o inbound), el evento no se entrega.
+
+Para environments custom, **no hay fallback** — si el `environment` declarado en el envío no está configurado, el envío entero falla con `400 ENVIRONMENT_NOT_CONFIGURED`. Ver [Webhook environments](/concepts/webhook-environments).
+
+### `is_test` en el payload
+
+```json
+{
+  "event": "email.delivery",
+  "is_test": true,
+  "data": { "...": "..." }
+}
+```
+
+Como los eventos outbound llegan a todas las URLs configuradas, basta configurar `webhook_url` para recibir todo en una sola URL. Distingue el tráfico test con el flag `is_test`.
+
+## Inbound (replies con adjuntos)
+
+Cuando un destinatario responde tu email, RQE captura la respuesta y la dispara como `email.inbound`.
+
+### Cuándo dispara
+
+Solo cuando el email outbound original se envió **vía API** (`POST /v1/send-email`, `POST /send-email` o `POST /v1/send-batch`). En ese caso el Reply-To lleva un token único:
+
+```
+Reply-To: "Tu Empresa" <r-{token}@rqe.inbound.reallyquickemails.com>
+```
+
+Los clientes (Gmail, Outlook, Apple Mail) muestran el nombre del remitente, no la dirección técnica. Al responder, la respuesta llega a RQE y dispara el webhook.
+
+**No dispara** para envíos desde la UI de RQE (campañas, automatizaciones, "enviar prueba"): esos usan el Reply-To del sender humano para que reciba en su inbox.
+
+### Body del payload inbound
+
+```json
+{
+  "event": "email.inbound",
+  "timestamp": "2026-04-28T22:45:32.299Z",
+  "project_id": "uuid",
+  "is_test": false,
+  "data": {
+    "message_id": "<gmail-message-id@mail.gmail.com>",
+    "thread_id": "uuid",
+    "in_reply_to": "<original-message-id@us-east-1.amazonses.com>",
+    "references": ["<...>"],
+    "from": { "email": "cliente@empresa.com", "name": "Cliente Externo" },
+    "to": [
+      { "email": "r-Rbxiu6RC@rqe.inbound.reallyquickemails.com", "name": null }
+    ],
+    "cc": [],
+    "subject": "Re: Asunto original",
+    "text_body": "respuesta plana del cliente",
+    "html_body": "<div>respuesta html</div>",
+    "date": "2026-04-28T23:30:49.000Z",
+    "attachments": [
+      {
+        "filename": "factura.pdf",
+        "content_type": "application/pdf",
+        "size": 50826,
+        "storage_key": "...",
+        "download_url": "https://...?token=..."
+      }
+    ],
+    "return_path_parsed": null,
+    "original_outbound": {
+      "message_id": "<original-message-id@us-east-1.amazonses.com>",
+      "activity_id": "uuid",
+      "campaign_id": null,
+      "email_type": null,
+      "thread_id": "uuid"
+    }
+  }
+}
+```
+
+Igual que en outbound, el payload incluye `is_test` y, si el envío original usó un environment custom, también `environment`.
+
+### Campos clave
+
+| Campo | Descripción |
+|---|---|
+| `data.from` | Quien envió la respuesta (cliente externo). |
+| `data.to[]` | Dirección token a la que respondió. |
+| `data.text_body` / `data.html_body` | Cuerpo de la respuesta. |
+| `data.attachments[]` | Adjuntos del reply. Cada uno incluye `filename`, `content_type`, `size`, `storage_key` y `download_url` firmada con **TTL 7 días**. Descarga y persiste si necesitas retención mayor. |
+| `data.return_path_parsed` | `{ project_id, activity_id }` si la dirección respondida referencia directamente el envío original; `null` en caso contrario. |
+| `data.original_outbound` | Referencia al email original que disparó la conversación: `message_id`, `activity_id`, `campaign_id`, `email_type`, `thread_id` (`null` si no se pudo resolver). |
+
+### Límite de tamaño
+
+**150 KB total por reply** (incluyendo adjuntos en MIME base64). Replies que lo excedan rebotan con `"Message length exceeds limit set by recipient"`. Workaround: pide al contacto que comparta archivos grandes vía link Drive/WeTransfer.
+
+## Retry y respuesta esperada
+
+| Status | Comportamiento |
+|---|---|
+| `200`–`299` | Éxito. RQE marca el dispatch como exitoso. |
+| Otro / timeout / error de red | RQE reintenta con backoff exponencial (30s → 1m → 2m → 4m). Después de **5 intentos** fallidos, no se reintenta más. |
+
+- **Timeout:** 10 segundos por intento.
+- **Intentos (eventos outbound):** 5 en total — 1 inicial + 4 reintentos con backoff exponencial.
+- **`email.inbound`:** un solo intento, **sin reintentos**.
+- **Idempotencia:** los retries pueden re-entregar el mismo evento; si entregas a ambas URLs y solo una falla, el reintento re-entrega a **las dos**. Usa el par `(event, data.activity_id, data.event_timestamp)` para deduplicar lado-cliente.
+
+## Próximos pasos
+
+- [Tracking](/concepts/tracking) — qué eventos disparan webhook y cómo se generan.
+- [Test mode](/concepts/test-mode) — separar tráfico dev/prod vía `sk_test_*`.
+- [Webhook environments](/concepts/webhook-environments) — N URLs por proyecto vía campo `environment`.
+- [Send email](/api-reference/send-email) — cómo disparar emails que generen estos eventos.

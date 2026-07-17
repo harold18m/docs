@@ -1,0 +1,265 @@
+---
+title: Preguntas Frecuentes
+description: "Respuestas rápidas a las dudas más comunes de la API."
+---
+
+## Envío de emails
+
+<AccordionGroup>
+
+<Accordion title="¿Cuál es la diferencia entre send-email, send-template-email y send-batch?">
+
+| Endpoint | Mejor para | Destinatarios |
+|---|---|---|
+| `POST /v1/send-email` | Emails individuales con HTML directo (transaccionales) | 1 |
+| `POST /v1/send-template-email` | Emails individuales usando un template guardado con variables | 1 |
+| `POST /v1/send-batch` | Envíos masivos a múltiples destinatarios | Hasta 10,000 |
+
+Reglas rápidas:
+- `send-email` cuando generas HTML desde tu sistema (confirmaciones, alertas).
+- `send-template-email` cuando tienes templates en el editor visual y solo envías variables.
+- `send-batch` para enviar el mismo email (con variables personalizadas) a muchos destinatarios.
+
+</Accordion>
+
+<Accordion title="¿Puedo enviar más de 10,000 emails?">
+
+Sí. Tienes dos opciones:
+
+1. **Múltiples llamadas a `/v1/send-batch`** — Divide destinatarios en lotes de hasta 10,000 y haz una llamada por lote.
+2. **Campañas desde el Dashboard** — Crea una campaña sin límite. El sistema procesa automáticamente por lotes con rate limiting integrado. Ideal para 50k+ emails.
+
+</Accordion>
+
+<Accordion title="¿Cuáles son los límites de envío?">
+
+| Límite | Valor |
+|---|---|
+| Destinatarios por batch request | 10,000 |
+| Destinatarios por envío individual (`/v1/send-email`) | 50 |
+| Adjuntos | 10 por correo, 10 MB total |
+
+También aplican límites diarios y mensuales según tu cuenta. Al alcanzarlos, los envíos se encolan y se reanudan solos. Contacta soporte si necesitas más capacidad.
+
+</Accordion>
+
+<Accordion title="¿Puedo programar un envío para después?">
+
+Sí. Usa el campo `scheduled_at` con ISO 8601:
+
+```json
+{ "scheduled_at": "2026-04-01T10:00:00Z" }
+```
+
+Funciona en `/send-email` (acepta ISO 8601, lenguaje natural como `"tomorrow at 3pm"` y campo `timezone`) y en `/v1/send-batch` (solo ISO 8601). Ver [Programar Envíos](/guides/scheduling).
+
+</Accordion>
+
+<Accordion title="¿Qué pasa si envío un email a alguien que se dio de baja?">
+
+El email se omite automáticamente. El comportamiento depende del endpoint:
+
+- **`/v1/send-template-email`**: la supresión se detecta al momento — responde `200` con `"skipped": true` y `suppression_reason` (ver [API v1](/api-reference/public-api)).
+- **`/v1/send-email` y `/send-email`**: la supresión se detecta al momento — responde `200` con `"suppressed": true` y `reason: "recipient_suppressed"`, sin encolar nada (ver [Destinatario suprimido](/api-reference/send-email#destinatario-suprimido)).
+- **`/v1/send-batch`**: la API responde `200` y aplica la supresión en segundo plano. El correo nunca se envía; la actividad queda con `current_status: "suppressed"`, consultable vía la [Activity API](/api-reference/activity).
+
+En todos los casos de envío vía API también se emite el webhook [`email.suppressed`](/api-reference/webhooks#emailsuppressed) para que sincronices tu lado.
+
+La lista de supresión incluye destinatarios por:
+- **Baja** — clic en enlace de unsubscribe
+- **Hard bounce** — rebote permanente
+- **Queja** — marcado como spam
+
+</Accordion>
+
+<Accordion title="¿Cómo rastreo si un email fue entregado?">
+
+Cada envío retorna un `activity_id` (o `email_id`). Los eventos de entrega actualizan el estado:
+
+```
+queued → sent → delivered (éxito)
+queued → sent → bounced (rebote)
+queued → sent → complained (spam)
+```
+
+Estado visible en Dashboard → Actividad, o consultable vía la [Activity API](/api-reference/activity). Para `send-batch`, hay un `activity_id` por destinatario.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Dominios y deliverability
+
+<AccordionGroup>
+
+<Accordion title="¿Por qué mis emails llegan a spam?">
+
+Causas más comunes:
+
+1. **Dominio no verificado** — DKIM, SPF, DMARC. Verifica con `POST /domains/:domain/verify`.
+2. **Dominio frío** — necesita warming gradual:
+   - Día 1: ~50,000 emails
+   - Día 2: ~75,000 emails
+   - Día 3+: resto
+3. **Contenido sospechoso** — muchos enlaces, mayúsculas, palabras como "GRATIS"/"OFERTA"/"URGENTE", imágenes sin alt.
+4. **Alta tasa rebotes/quejas** — limpia tu lista regularmente. >2% bounces o >0.1% complaints degrada reputación.
+5. **Sin enlace de baja** — ReallyQuickEmails agrega `List-Unsubscribe` automáticamente, pero incluye un enlace visible.
+
+</Accordion>
+
+<Accordion title="¿Cómo verifico mi dominio?">
+
+1. Registra el dominio con `POST /domains/register`
+2. Configura los 7 records DNS en tu proveedor:
+   - 1 TXT verificación de dominio
+   - 3 CNAME DKIM
+   - 1 TXT SPF
+   - 1 TXT DMARC
+   - 1 CNAME Return-Path
+3. Espera 5–10 min para propagación
+4. Verifica con `POST /domains/:domain/verify`
+5. Cuando `can_send: true`, listo
+
+Guía completa en [Dominios](/api-reference/domains).
+
+</Accordion>
+
+<Accordion title="¿Cuánto tarda la verificación DNS?">
+
+| Proveedor | Tiempo típico |
+|---|---|
+| Cloudflare | 1–5 min |
+| GoDaddy | 5–30 min |
+| Namecheap | 5–30 min |
+| Route 53 (AWS) | 1–5 min |
+| Otros | hasta 48 h |
+
+</Accordion>
+
+</AccordionGroup>
+
+## Templates
+
+<AccordionGroup>
+
+<Accordion title="¿Qué sintaxis usan las variables?">
+
+| Sintaxis | Ejemplo |
+|---|---|
+| Doble llave | `{{nombre}}` |
+| Llave simple | `{nombre}` |
+
+También:
+- **Fallback** — `{nombre || "Cliente"}`
+- **HTML crudo** — `{!htmlContent}`
+- **Loops** — `{{#each productos}}...{{/each}}`
+- **Condicionales** — `{{#if premium}}...{{/if}}`
+
+Ver [Templates y Variables](/guides/templates).
+
+</Accordion>
+
+<Accordion title="¿Qué helpers de formateo hay disponibles?">
+
+| Helper | Uso | Ejemplo |
+|---|---|---|
+| `formatCurrency` | Moneda | `{{formatCurrency total}}` → `$61,970.00` |
+| `multiply` | Multiplicación | `{{multiply cantidad precio}}` |
+| `formatDate` | Fecha legible | `{{formatDate fecha}}` → `15/3/2026` |
+| `formatDate "long"` | Formato largo | `{{formatDate fecha "long"}}` → `domingo, 15 de marzo de 2026` |
+| `default` | Default | `{{default nombre "Cliente"}}` |
+| `json` | Serializa a JSON | `{{json datos}}` |
+
+</Accordion>
+
+<Accordion title="¿Puedo usar el mismo template para send-email y send-batch?">
+
+Sí. Los templates creados en el editor visual funcionan en:
+- `POST /v1/send-template-email` (individual, `template_id` + `variables`)
+- `POST /v1/send-batch` (masivo, `templateId` + `data` por destinatario)
+- Campañas desde Dashboard
+
+</Accordion>
+
+</AccordionGroup>
+
+## Campañas
+
+<AccordionGroup>
+
+<Accordion title="¿Diferencia entre send-batch y campaña?">
+
+| Aspecto | send-batch (API) | Campaña (Dashboard) |
+|---|---|---|
+| Límite | 10,000 por request | Sin límite |
+| Creación | Código (curl, SDK) | Asistente visual de 5 pasos |
+| Template | HTML directo o templateId | Editor visual de campañas |
+| Variables | `data` por destinatario | CSV upload, mapeo, defaults |
+| Lotes | Manual | Automático |
+| Warming | Manual | Modo por lotes configurable |
+| Reintentos | No | Automático |
+| Stats | Vía activity_id individual | Dashboard con métricas agregadas |
+
+Regla: `send-batch` para integraciones programáticas. Campañas para envíos grandes desde UI.
+
+</Accordion>
+
+<Accordion title="¿Puedo pausar una campaña en proceso?">
+
+Sí. Desde el Dashboard pausas una campaña en `processing`. Los emails ya encolados se siguen enviando, pero no se despachan nuevos lotes. Reanuda desde el Dashboard.
+
+</Accordion>
+
+<Accordion title="¿Qué pasa si mi campaña queda en 'rate_limited'?">
+
+Se alcanzó el límite de envío de tu cuenta. Se reanuda automáticamente cuando el límite se restablece. También puedes reanudarla manualmente desde el Dashboard.
+
+</Accordion>
+
+</AccordionGroup>
+
+## API y autenticación
+
+<AccordionGroup>
+
+<Accordion title="¿Dónde encuentro mis API keys?">
+
+1. Dashboard → tu proyecto → **Configuración → Integraciones → API Keys**
+2. Copia la key correspondiente:
+   - **Live** (`sk_live_*` o `sk_proj_*`) → tráfico productivo
+   - **Test** (`sk_test_*`) → desarrollo, no consume cuota
+
+Ver [API Keys](/guides/api-keys) para detalles.
+
+</Accordion>
+
+<Accordion title="¿Por qué recibo error 401?">
+
+| Causa | Solución |
+|---|---|
+| Falta header `Authorization` | Agrega `Authorization: Bearer sk_live_...` |
+| Formato incorrecto | Verifica el espacio después de `Bearer` |
+| Prefijo no reconocido | Solo `sk_proj_*`, `sk_live_*`, `sk_test_*` |
+| Key inválida o revocada | Genera una nueva desde Configuración → API Keys |
+
+</Accordion>
+
+<Accordion title="¿La API tiene rate limiting?">
+
+Los endpoints no tienen rate limiting propio; el límite lo impone la capacidad de envío de tu cuenta. Al alcanzarlo, los emails se encolan y se envían solos cuando hay capacidad.
+
+</Accordion>
+
+<Accordion title="¿Cómo evito doble envío en retries?">
+
+Pasa un header `Idempotency-Key: <string-único>` (1–256 caracteres) en `/send-email` o `/v1/send-batch`. Un reintento con la misma key dentro de 24h devuelve la respuesta cacheada con `Idempotency-Replayed: true`. Ver [API Keys](/guides/api-keys#idempotency).
+
+</Accordion>
+
+</AccordionGroup>
+
+## Soporte
+
+<Info>
+  Contáctanos en [soporte@reallyquickemails.com](mailto:soporte@reallyquickemails.com) incluyendo: Project ID, endpoint usado, request body, error/respuesta y timestamp aproximado.
+</Info>

@@ -1,0 +1,150 @@
+---
+title: Deliverability y autenticación
+description: "SPF, DKIM, DMARC y reputación: cómo llegar al inbox."
+---
+
+Cómo ReallyQuickEmails (RQE) autentica tus envíos y qué hay detrás de "¿llega al inbox?". No es un tutorial paso a paso (para eso ver [Dominios](/api-reference/domains)), sino la teoría para diagnosticar problemas y decidir qué configurar.
+
+## El stack de autenticación
+
+Cuando un servidor de correo (Gmail, Outlook) recibe un email, hace 4 chequeos para decidir si va al inbox o a spam:
+
+| Chequeo | Qué verifica | Quién lo configura |
+|---|---|---|
+| **SPF** | El servidor que envió el email tiene permiso para enviar desde tu dominio | DNS de tu dominio |
+| **DKIM** | El email fue firmado criptográficamente con una clave que publicaste en DNS | DNS + RQE genera y firma |
+| **DMARC** | Política sobre qué hacer si SPF/DKIM fallan (none/quarantine/reject) | DNS de tu dominio |
+| **MAIL FROM domain** | El "envelope sender" (Return-Path) coincide con tu dominio, no con `amazonses.com` | DNS + RQE |
+
+Con los 4 pasando, tu email tiene **alignment estricto** y la deliverability sube mucho.
+
+## SPF (Sender Policy Framework)
+
+Un record TXT en tu DNS que lista qué servidores pueden enviar desde tu dominio. Cuando RQE envía desde `noreply@tudominio.com`, Gmail consulta el SPF de `tudominio.com` y verifica que el servidor de envío esté en la lista.
+
+Ejemplo (el que genera RQE al registrar tu dominio):
+
+```
+tudominio.com. TXT "v=spf1 include:amazonses.com ~all"
+```
+
+`~all` (soft fail): los servidores no listados se marcan como sospechosos sin rechazarse. Endurécelo a `-all` (hard fail) cuando confirmes que todo tu tráfico legítimo sale por servidores listados.
+
+<Warning>
+  Si ya tienes SPF para otro proveedor (Mailgun, Sendgrid, Google Workspace), **mergea** los `include:` en un solo record; no agregues otro TXT. Múltiples records SPF rompen la verificación.
+</Warning>
+
+## DKIM (DomainKeys Identified Mail)
+
+Una firma criptográfica del contenido, hecha con una clave privada de RQE. Tu dominio publica la clave pública en DNS vía 3 records CNAME. Al llegar el email, Gmail toma la firma del header, descarga la clave pública del CNAME y valida.
+
+```
+abc123._domainkey.tudominio.com. CNAME abc123.dkim.amazonses.com.
+def456._domainkey.tudominio.com. CNAME def456.dkim.amazonses.com.
+ghi789._domainkey.tudominio.com. CNAME ghi789.dkim.amazonses.com.
+```
+
+Los tokens (`abc123`, ...) se generan al registrar tu dominio y vienen en la respuesta de [`POST /domains/register`](/api-reference/domains#post-domainsregister).
+
+DKIM también hace que tu dominio aparezca en el `signed-by:` del header en Gmail web: señal de legitimidad para el usuario final.
+
+## DMARC
+
+La política sobre qué hacer si SPF o DKIM fallan. Es el más fuerte de los 3 contra spoofing.
+
+| Política | Qué hace si falla SPF/DKIM | Cuándo usar |
+|---|---|---|
+| `p=none` | Solo reporta, no rechaza | Primera implementación, mientras analizas reportes |
+| `p=quarantine` | Manda a spam | Después de 1–2 semanas de `none` sin issues |
+| `p=reject` | Rechaza el email completamente | Producción estable, máxima protección |
+
+Ejemplo:
+
+```
+_dmarc.tudominio.com. TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@tudominio.com; pct=100"
+```
+
+`pct=100` aplica la política al 100% del tráfico. Es común empezar con `pct=10` y subir gradualmente.
+
+<Info>
+  **Reportes DMARC**
+
+  Con `rua=`, los servidores receptores te mandan reportes diarios con qué % de tu tráfico pasó SPF/DKIM. Útil para detectar suplantación o configuraciones rotas. Hay servicios gratuitos para parsearlos (Postmark, dmarcian).
+</Info>
+
+## MAIL FROM domain (custom)
+
+Sin configuración extra, el `mailed-by:` que ve Gmail es `amazonses.com` — el dominio del proveedor, no el tuyo. Eso baja el SPF alignment de strict a relaxed.
+
+Con un **Custom MAIL FROM domain** (en RQE, el subdominio `bounce.tudominio.com`), el `mailed-by:` pasa a ser tu dominio y SPF queda strict.
+
+RQE lo configura con un único record CNAME, incluido en los 7 que se generan al registrar el dominio:
+
+```
+bounce.tudominio.com. CNAME feedback-smtp.us-east-1.amazonses.com.
+```
+
+<Info>
+  Custom MAIL FROM no es obligatorio: `can_send` no lo requiere y los emails llegan igual sin él. Pero mejora el alignment SPF, sobre todo en clientes estrictos como ProtonMail u Outlook empresarial. Recomendado para volúmenes grandes.
+</Info>
+
+## El proceso de verificación en RQE
+
+<Steps>
+
+<Step title="Registrar el dominio">
+
+`POST /domains/register` con `{ "domain": "tudominio.com", "sender_name": "Mi Empresa", "sender_email": "noreply@tudominio.com" }` (los tres campos son requeridos). RQE genera los 7 records DNS y los devuelve. Ver [Dominios](/api-reference/domains).
+
+</Step>
+
+<Step title="Configurar los 7 records">
+
+En tu proveedor DNS (Cloudflare, GoDaddy, Route 53, etc):
+
+- 1 TXT verificación de dominio
+- 3 CNAME DKIM
+- 1 TXT SPF (mergear con existente si aplica)
+- 1 TXT DMARC
+- 1 CNAME Return-Path (Custom MAIL FROM)
+
+</Step>
+
+<Step title="Esperar propagación">
+
+5–10 minutos en Cloudflare/Route 53. Hasta 48h en proveedores lentos.
+
+</Step>
+
+<Step title="Verificar">
+
+`POST /domains/:domain/verify` comprueba la verificación del dominio, los 3 CNAME de DKIM y el CNAME de MAIL FROM (SPF y DMARC no se validan automáticamente). Con dominio y DKIM verificados, la respuesta incluye `can_send: true` y puedes enviar desde `*@tudominio.com`.
+
+</Step>
+
+</Steps>
+
+## Por qué los emails llegan a spam (más allá de la auth)
+
+Aunque la auth técnica esté OK, pesan factores reputacionales:
+
+| Factor | Impacto |
+|---|---|
+| Dominio nuevo (< 30 días) | Alto — hay que hacer warming |
+| Tasa de bounces > 2% | Alto — limpia tu lista regularmente |
+| Tasa de complaints > 0.1% | Crítico — Gmail/Outlook degradan reputación rápido |
+| Sin `List-Unsubscribe` header | Alto — RQE lo agrega automático en campañas y en `/v1/send-template-email`; en envíos directos pásalo con `custom_headers` (`POST /send-email` y `/v1/send-batch`) |
+| Contenido sospechoso | Medio — palabras como "GRATIS", "URGENTE" en mayúsculas, ratio HTML/texto malo |
+| Listas compradas | Crítico — la mayoría son spam traps |
+
+<Warning>
+  **Warming**
+
+  Si tu dominio es nuevo o no envió en > 60 días, haz **warming gradual**: día 1 ~50k emails, día 2 ~75k, día 3+ resto. El [modo por lotes](/api-reference/campaigns) lo automatiza.
+</Warning>
+
+## Próximos pasos
+
+- [Dominios](/api-reference/domains) — endpoints para registrar y verificar.
+- [Tracking](/concepts/tracking) — cómo funciona el open/click tracking.
+- [FAQ — ¿por qué van a spam?](/guides/faq) — checklist práctico.

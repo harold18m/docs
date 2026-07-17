@@ -1,0 +1,371 @@
+---
+title: Enviar Email
+description: "Envía un email de forma inmediata o programada, con plantillas y adjuntos."
+---
+
+`POST /send-email`
+
+Encola un correo para envío inmediato o lo programa para una fecha futura.
+
+> **API avanzada** (`recipient`/`sender`/`html`) — la única con envío programado, plantillas y `dry_run`. Para integraciones simples, la [API v1](/api-reference/public-api) usa nombres REST y contrato estable.
+
+## Autenticacion
+
+Bearer token con una API key del proyecto:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxx
+```
+
+Se aceptan `sk_proj_*`/`sk_live_*` (Live) y `sk_test_*` (Test). El `project_id` se infiere de la key.
+
+Ver más en [Autenticación](/guides/authentication).
+
+## Request Body
+
+| Campo              | Tipo              | Requerido | Descripción                                                                 |
+| ------------------ | ----------------- | --------- | --------------------------------------------------------------------------- |
+| `html`             | string            | Sí*       | Contenido HTML del correo. Requerido si no se usa `templateId`.             |
+| `subject`          | string            | Sí        | Asunto del correo.                                                          |
+| `recipient`        | string \| string[] | Sí        | Dirección de correo del destinatario, o un array de direcciones.            |
+| `sender`           | string            | Sí        | Dirección de correo del remitente.                                          |
+| `senderName`       | string            | No        | Nombre visible del remitente.                                               |
+| `templateId`       | string            | No        | ID de una plantilla almacenada. Si se proporciona, se usa en lugar de `html`. |
+| `data`             | object            | No        | Objeto con variables para sustitución Handlebars en la plantilla o HTML.    |
+| `email_type`       | string            | No        | Tipo de correo (ej. `transactional`, `marketing`, `automation`).            |
+| `campaign_id`      | string            | No        | UUID de la campaña asociada.                                                |
+| `automation_run_id`| string            | No        | UUID de la ejecución de automatización asociada.                            |
+| `scheduled_at`     | string            | No        | Fecha/hora de envío programado. Ver [Programacion de Envio](#programacion-de-envio). |
+| `timezone`         | string            | No        | Zona horaria para interpretar `scheduled_at`. Ver [Programacion de Envio](#programacion-de-envio). |
+| `cc`               | string \| string[] | No        | Dirección(es) de correo en copia.                                           |
+| `bcc`              | string \| string[] | No        | Dirección(es) de correo en copia oculta.                                    |
+| `attachments`      | array             | No        | Lista de objetos de adjuntos. Máximo 10 adjuntos. Ver [Adjuntos](#adjuntos). |
+| `text`             | string            | No        | Versión texto plano del correo (alternativa MIME al HTML).                  |
+| `custom_headers`   | object            | No        | Headers adicionales para el correo.                                         |
+| `in_reply_to`      | string            | No        | Message-ID al que responde este correo (threading).                         |
+| `references`       | string \| string[] | No        | Message-IDs de la cadena de threading (header `References`).               |
+| `thread_id`        | string            | No        | ID de hilo para agrupar correos relacionados.                               |
+| `dry_run`          | boolean           | No        | Si es `true`, renderiza el correo (template + variables) sin enviarlo ni registrar actividad. Ver [Dry Run](#dry-run). |
+| `environment`      | string            | No        | Nombre de un webhook environment configurado en el proyecto. Rutea los webhooks de este envío a esa URL. Ver [Webhook Environments](/concepts/webhook-environments). |
+
+## Adjuntos
+
+Cada objeto en el array `attachments` tiene la siguiente estructura:
+
+| Campo         | Tipo   | Requerido | Descripción                                                        |
+| ------------- | ------ | --------- | ------------------------------------------------------------------ |
+| `filename`    | string | Sí        | Nombre del archivo (ej. `factura.pdf`).                            |
+| `url`         | string | No*       | URL pública del archivo. Requerido si no se proporciona `content`. |
+| `content`     | string | No*       | Contenido del archivo codificado en Base64. Requerido si no se proporciona `url`. |
+| `contentType` | string | No        | Tipo MIME del archivo (ej. `application/pdf`). Se infiere del nombre si no se proporciona. |
+
+**Límites:**
+
+- Máximo **10 adjuntos** por correo.
+- Máximo **10 MB** por adjunto individual.
+- Máximo **10 MB** en total por correo (límite de la infraestructura de envío).
+
+Los adjuntos se procesan en segundo plano: si uno excede los límites o su URL no es accesible, el envío falla async y queda en el activity record.
+
+Ver más en [Adjuntos](/guides/attachments).
+
+## Programacion de Envio
+
+El campo `scheduled_at` soporta múltiples formatos:
+
+### Timestamp ISO 8601
+
+```
+"scheduled_at": "2025-03-15T14:30:00Z"
+```
+
+### Lenguaje natural (ingles)
+
+```
+"scheduled_at": "tomorrow at 3pm"
+"scheduled_at": "in 2 hours"
+"scheduled_at": "next monday at 9am"
+```
+
+### Zona horaria (`timezone`)
+
+El campo `timezone` se usa para interpretar correctamente `scheduled_at`. Soporta:
+
+- **Nombre IANA:** `"America/Santiago"`, `"US/Eastern"`, `"Europe/Madrid"`
+- **Offset:** `"+09:00"`, `"-05:00"`, `"UTC-3"`, `"GMT+9"`
+- **Numérico entero:** `-3`, `9` (sin fracciones — para zonas de media hora como India usa el formato `"+05:30"`)
+
+Si no se proporciona `timezone`, se usa la zona horaria por defecto del proyecto (`default_timezone`). Si el proyecto no tiene zona horaria configurada, se asume UTC.
+
+Ver más en [Programar Envíos](/guides/scheduling).
+
+## Dry Run
+
+Con `"dry_run": true` el endpoint renderiza el correo **sin enviarlo**: no encola, no registra actividad ni consume cuota. Útil para validar payload y variables antes de un envío real.
+
+```json
+{
+  "dry_run": true,
+  "test_mode": false,
+  "sample_cart_items_injected": false,
+  "would_send": {
+    "to": ["cliente@ejemplo.com"],
+    "cc": [],
+    "bcc": [],
+    "from": "Mi Tienda <ventas@mitienda.com>",
+    "subject": "Tu pedido está en camino",
+    "html_preview": "<h1>Hola Juan</h1><p>Tu pedido #12345 está en camino.</p>",
+    "template_id": null,
+    "variables_used": ["nombre", "pedido"]
+  }
+}
+```
+
+`html_preview` se trunca a 8000 caracteres. Las variables sin valor en `data` se dejan como `{{variable}}` en el preview.
+
+## Headers
+
+| Header          | Tipo   | Requerido | Descripción                                      |
+| --------------- | ------ | --------- | ------------------------------------------------ |
+| `Authorization` | string | Sí        | `Bearer sk_proj_...` / `sk_live_...` / `sk_test_...`. |
+| `Content-Type`  | string | Sí        | Debe ser `application/json`.                     |
+| `Idempotency-Key` | string | No      | Key arbitraria 1-256 chars. Mismo `(project_id, key)` dentro de 24h retorna respuesta cacheada. |
+| `x-source`      | string | No        | Identificador del origen de la solicitud (`api`, `platform`, `test`). |
+
+Ver más sobre `Idempotency-Key` en [API Keys](/guides/api-keys).
+
+## Ejemplo de Solicitud
+
+### Envio inmediato
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "html": "<h1>Hola {{nombre}}</h1><p>Tu pedido #{{pedido}} está en camino.</p>",
+    "subject": "Tu pedido está en camino",
+    "recipient": "cliente@ejemplo.com",
+    "sender": "ventas@mitienda.com",
+    "senderName": "Mi Tienda",
+    "data": {
+      "nombre": "Juan",
+      "pedido": "12345"
+    },
+    "email_type": "transactional"
+  }'
+```
+
+</Tab>
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+const { data, error } = await rqe.emails.send({
+  html: '<h1>Hola {{nombre}}</h1><p>Tu pedido #{{pedido}} está en camino.</p>',
+  subject: 'Tu pedido está en camino',
+  recipient: 'cliente@ejemplo.com',
+  sender: 'ventas@mitienda.com',
+  senderName: 'Mi Tienda',
+  data: {
+    nombre: 'Juan',
+    pedido: '12345',
+  },
+  email_type: 'transactional',
+});
+
+if (error) console.error(error);
+else console.log('Encolado:', data.email_id);
+```
+
+</Tab>
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "queued": true,
+  "jobId": "email-1780676307345-6da66195",
+  "email_id": "d116a543-9b13-41b4-93cf-647539018275",
+  "activityId": "d116a543-9b13-41b4-93cf-647539018275",
+  "message": "Email queued for sending"
+}
+```
+
+### Envio programado con adjuntos
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": "Reporte mensual - Marzo 2025",
+    "recipient": ["gerente@empresa.com", "director@empresa.com"],
+    "sender": "reportes@empresa.com",
+    "senderName": "Sistema de Reportes",
+    "templateId": "reporte-mensual",
+    "data": {
+      "mes": "Marzo",
+      "anio": "2025"
+    },
+    "scheduled_at": "next monday at 9am",
+    "timezone": "America/Santiago",
+    "attachments": [
+      {
+        "filename": "reporte-marzo-2025.pdf",
+        "url": "https://storage.ejemplo.com/reportes/marzo-2025.pdf",
+        "contentType": "application/pdf"
+      }
+    ]
+  }'
+```
+
+</Tab>
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+const { data, error } = await rqe.emails.send({
+  subject: 'Reporte mensual - Marzo 2025',
+  recipient: ['gerente@empresa.com', 'director@empresa.com'],
+  sender: 'reportes@empresa.com',
+  senderName: 'Sistema de Reportes',
+  templateId: 'reporte-mensual',
+  data: {
+    mes: 'Marzo',
+    anio: '2025',
+  },
+  scheduled_at: 'next monday at 9am',
+  timezone: 'America/Santiago',
+  attachments: [
+    {
+      filename: 'reporte-marzo-2025.pdf',
+      content: base64Pdf, // contenido del archivo en Base64
+      content_type: 'application/pdf',
+    },
+  ],
+});
+```
+
+> En el SDK los adjuntos se envían como `content` en Base64 con `content_type` (snake_case); el campo `url` solo está disponible vía API directa.
+
+</Tab>
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "scheduled": true,
+  "scheduled_send_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "scheduled_for": "2025-03-17T12:00:00.000Z",
+  "scheduled_for_local": "2025-03-17 09:00 (America/Santiago)",
+  "timezone": "America/Santiago",
+  "message": "Correo programado para 2025-03-17 09:00 (America/Santiago)"
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `scheduled_send_id` | string | UUID del correo programado. |
+| `scheduled_for` | string | Fecha y hora de envío en UTC (ISO 8601). |
+| `scheduled_for_local` | string | Fecha y hora de envío en la zona horaria especificada (formato legible). |
+| `timezone` | string | Zona horaria utilizada para la programación. |
+
+Ver más en [SDK de Node.js](/guides/sdk-nodejs).
+
+## Respuesta del envio inmediato
+
+El envío es **asíncrono**: el endpoint encola el correo y responde de inmediato con `200` (ver el ejemplo arriba). El envío real ocurre en segundo plano.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `queued` | boolean | Siempre `true` en envío inmediato. El correo quedó encolado. |
+| `jobId` | string | ID del job en la cola de envío. |
+| `email_id` | string \| null | UUID del registro de actividad. Mismo valor que `activityId`. |
+| `activityId` | string \| null | UUID del registro de actividad, pre-creado con estado `queued`. |
+
+El resultado final del envío (delivered, bounced, failed) **no viene en esta respuesta**: se consulta vía la [Activity API](/api-reference/activity) usando `email_id`, o se recibe vía [webhooks](/api-reference/webhooks) (`email.send`, `email.delivery`, `email.bounce`, etc.).
+
+## Destinatario Suprimido
+
+Si el destinatario está en la **lista de supresión** del proyecto (rebote duro o queja previos), el correo **no se encola**: la API responde `200` de inmediato con `suppressed: true` y nada sale hacia el destinatario.
+
+```json
+{
+  "success": false,
+  "suppressed": true,
+  "queued": false,
+  "email_id": "uuid",
+  "activityId": "uuid",
+  "reason": "recipient_suppressed",
+  "message": "Recipient is on the suppression list; email not sent"
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `success` | boolean | `false` — el correo no se envió. |
+| `suppressed` | boolean | `true` — la dirección está suprimida. |
+| `queued` | boolean | `false` — no se encoló ningún job. |
+| `email_id` / `activityId` | string \| null | UUID del registro de actividad, con estado `suppressed`. |
+| `reason` | string | Siempre `recipient_suppressed`. |
+
+Es un `200` intencional (no un error): reintentar el mismo envío devolverá lo mismo. Lo correcto es **marcar la dirección en tu sistema y dejar de enviarle** — también puedes escuchar el webhook [`email.suppressed`](/api-reference/webhooks#emailsuppressed) para sincronizarlo automáticamente. La lista se gestiona en el dashboard (Audiencia → Suprimidos).
+
+## Reply-To Automatico (Inbound Email)
+
+Todos los envíos vía API incluyen automáticamente un header `Reply-To` con el nombre del remitente:
+
+```
+Reply-To: "Mi Tienda" <r-x7K9mP2q@rqe.inbound.reallyquickemails.com>
+```
+
+Los clientes muestran el **nombre del remitente**, no la dirección técnica. Al responder, la respuesta llega a RQE y dispara un webhook `email.inbound` con adjuntos. Ver [Webhooks → Inbound](/api-reference/webhooks#inbound-replies-con-adjuntos).
+
+## Verificacion de Remitente
+
+El `sender` debe estar verificado antes de poder enviar. Hay dos formas:
+
+1. **Verificar el email individual** vía magic link (`POST /domains/verify-email`).
+2. **Verificar el dominio completo** vía DNS (`POST /domains/register`) — recomendado, mejora deliverability y permite enviar desde cualquier dirección del dominio.
+
+La verificación **no es síncrona**: un sender no verificado igual recibe `200` con `queued: true`, y el rechazo ocurre en segundo plano. El fallo queda en el activity record (`current_status: "failed"`, `error_message`), consultable vía [Activity](/api-reference/activity) con el `email_id`.
+
+Ver más en [Domains API](/api-reference/domains).
+
+## Codigos de Error
+
+Como el envío es asíncrono, los únicos errores **síncronos** (en la respuesta HTTP) son de validación:
+
+| Código | Descripción                                                                 |
+| ------ | --------------------------------------------------------------------------- |
+| `400`  | Solicitud inválida. Faltan campos requeridos (`recipient`/`sender`, o `html`+`subject` sin `templateId`), `scheduled_at` no parseable, o `environment` no configurado. |
+| `401`  | API key inválida o ausente.                                                 |
+| `404`  | Plantilla no encontrada (solo en modo `dry_run`; con envío real, una plantilla inexistente falla de forma asíncrona en segundo plano). |
+| `500`  | Error interno del servidor (incluye fallo al insertar el envío programado). |
+
+Los errores de **envío** (sender no verificado, adjunto inválido, rate limit) ocurren en segundo plano: el activity record pasa a `current_status: "failed"` con el detalle en `error_message`.
+
+### Ejemplo de error
+
+```json
+{
+  "error": "Either templateId (with projectId) or both html and subject are required"
+}
+```

@@ -1,0 +1,243 @@
+---
+title: Events
+description: "Registra eventos custom para tracking y auto-creación de leads."
+---
+
+Trackea eventos desde tu app para segmentación y automatizaciones. Los eventos se asocian automáticamente a leads: si el email no existe, RQE crea un lead nuevo con datos vacíos.
+
+## Autenticacion
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Ver más en [API Pública v1](/api-reference/public-api#autenticacion).
+
+---
+
+## Endpoints
+
+### POST /v1/events
+
+Trackea un evento individual.
+
+**Parámetros del body:**
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| email | string | Sí | Email del lead. Se normaliza (trim + minúsculas) y se valida el formato |
+| event | string | Sí | Nombre del evento — nomenclatura libre, usa la que tenga sentido en tu app |
+| properties | object | No | Propiedades custom del evento. Debe ser un objeto, no un array |
+| timestamp | ISO 8601 | No | Cuándo ocurrió (default: ahora) |
+
+**Request:**
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/events \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@acme.com",
+    "event": "bought_stuff",
+    "properties": {
+      "item": "shoes",
+      "total": 89.99,
+      "category": "running"
+    },
+    "timestamp": "2026-04-10T15:00:00Z"
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: 'sk_proj_xxxxxxxxxxxx' });
+
+const { data, error } = await rqe.events.track({
+  email: 'jane@acme.com',
+  event: 'bought_stuff',
+  properties: { item: 'shoes', total: 89.99, category: 'running' },
+  timestamp: '2026-04-10T15:00:00Z',
+});
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `201 Created`
+
+```json
+{
+  "success": true,
+  "event_id": "uuid",
+  "recipient_id": "uuid",
+  "created_lead": true
+}
+```
+
+`created_lead: true` = el email no existía y se creó un lead nuevo automáticamente.
+
+**Errores:**
+
+| Código | Significado |
+|---|---|
+| 400 | Validación fallida: campo faltante, email inválido o `properties` no es objeto |
+
+Ver más en [Leads](/api-reference/leads).
+
+---
+
+### POST /v1/events/bulk
+
+Trackea hasta 1,000 eventos en una sola petición.
+
+**Parámetros del body:**
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| events | array | Sí | Hasta 1,000 eventos. Cada elemento acepta los mismos campos que `POST /v1/events`: `email` y `event` requeridos; `properties` y `timestamp` opcionales |
+
+**Request:**
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/events/bulk \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      { "email": "jane@acme.com", "event": "signed_up" },
+      { "email": "mike@store.co", "event": "bought_stuff", "properties": { "total": 50 } },
+      { "email": "sarah@clinic.com", "event": "appt_done", "properties": { "service": "cleaning" } }
+    ]
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+const { data, error } = await rqe.events.bulk([
+  { email: 'jane@acme.com', event: 'signed_up' },
+  { email: 'mike@store.co', event: 'bought_stuff', properties: { total: 50 } },
+  { email: 'sarah@clinic.com', event: 'appt_done', properties: { service: 'cleaning' } },
+]);
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `201 Created`
+
+```json
+{
+  "success": true,
+  "total": 3,
+  "created_leads": 1
+}
+```
+
+- `total`: cantidad de eventos registrados.
+- `created_leads`: cantidad de leads nuevos creados automáticamente (emails únicos que no existían).
+
+**Errores:**
+
+| Código | Significado |
+|---|---|
+| 400 | Más de 1,000 eventos, o un elemento inválido. La validación es por elemento: la respuesta indica el índice (por ejemplo, `events[2].email is required`) y no se registra ningún evento |
+
+---
+
+### GET /v1/events
+
+Lista eventos con filtros. Se ordenan por `timestamp` descendente (más recientes primero).
+
+**Parámetros de query:**
+
+| Parámetro | Tipo | Default | Descripción |
+|---|---|---|---|
+| email | string | — | Filtrar por email (se normaliza antes de comparar) |
+| event | string | — | Filtrar por nombre de evento |
+| since | ISO 8601 | — | Eventos desde esta fecha (inclusive) |
+| until | ISO 8601 | — | Eventos hasta esta fecha (inclusive) |
+| page | number | 1 | Página |
+| per_page | number | 50 | Resultados por página (mín 1, máx 200) |
+
+**Request:**
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/v1/events?email=jane@acme.com&event=bought_stuff&since=2026-04-01" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+const { data, error } = await rqe.events.list({
+  email: 'jane@acme.com',
+  event: 'bought_stuff',
+  since: '2026-04-01',
+});
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "email": "jane@acme.com",
+      "event": "bought_stuff",
+      "properties": { "item": "shoes", "total": 89.99 },
+      "timestamp": "2026-04-10T15:00:00Z",
+      "recipient_id": "uuid",
+      "created_at": "2026-04-10T15:00:01Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 142,
+    "total_pages": 3
+  }
+}
+```
+
+Ver más en [SDK de Node.js](/guides/sdk-nodejs).
+
+---
+
+## Errores
+
+Formato de error: `{ "error": "mensaje" }`. Códigos comunes a todos los endpoints:
+
+| Código | Significado |
+|---|---|
+| 401 | API key faltante o inválida |
+| 500 | Error interno (incluye campo adicional `details`) |

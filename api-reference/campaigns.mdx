@@ -1,0 +1,263 @@
+---
+title: Campañas
+description: "Crea y envía campañas de email masivo con variables por destinatario."
+---
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+---
+
+## Como enviar correos masivos
+
+Hay dos formas de enviar correos masivos:
+
+| Método | Mejor para | Límite por request |
+|---|---|---|
+| **API: `POST /v1/send-batch`** | Integraciones programáticas, envíos desde tu backend | 10,000 destinatarios |
+| **API: `POST /v1/campaigns` o Dashboard** | Envíos grandes con segmentos, lotes y warming | Hasta 10,000,000 destinatarios (procesamiento automático por lotes) |
+
+Ver más en [`POST /v1/send-batch`](/api-reference/public-api#post-v1send-batch).
+
+---
+
+## POST /v1/campaigns
+
+Crea una campaña de envío masivo.
+
+### Parámetros del body
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `name` | string | Sí | Nombre de la campaña. |
+| `templateId` | string | Sí | ID (UUID) del template a enviar. |
+| `senderProfileId` | string | Sí | ID del perfil de remitente (dominio verificado). |
+| `recipientIds` | string[] | Condicional | IDs de destinatarios. Requerido cuando `selectAllRecipients` es `false`. |
+| `selectAllRecipients` | boolean | No | Enviar a todos los destinatarios del proyecto. Default: `false`. |
+| `recipientCount` | number | Condicional | Total de destinatarios. Requerido cuando `selectAllRecipients` es `true`. |
+| `recipientFilter` | object | No | Filtro de destinatarios (solo con `selectAllRecipients: true`). |
+| `subject` | string | No | Asunto de la campaña. Si se omite, se usa el asunto del template. |
+| `previewText` | string | No | Texto de preview (preheader). |
+| `templateInternalId` | string \| number | No | ID interno numérico del template (alternativo al UUID). |
+| `scheduledFor` | string | No | Timestamp ISO para programar el envío. |
+| `scheduleType` | string | No | Tipo de programación. Default: `scheduled`. Con `delay` requiere `delayAmount` y `delayUnit`. |
+| `delayAmount` | number | No | Cantidad de retraso (solo con `scheduleType: "delay"`). |
+| `delayUnit` | string | No | Unidad del retraso (solo con `scheduleType: "delay"`). |
+| `batchMode` | boolean | No | Activa el envío por lotes. Default: `false`. |
+| `batchSize` | number | No | Destinatarios por lote (con `batchMode: true`). |
+| `batchIntervalHours` | number | No | Horas entre lotes. Default: `24`. |
+| `sendOverHours` | number | No | Distribuye el envío uniformemente en N horas. |
+| `variableConfig` | object | No | `{ "defaults": {...}, "mappings": {...} }` — valores por defecto y mapeo de campos del destinatario a variables del template. |
+| `confirmDuplicate` | boolean | No | Omite la detección de campañas duplicadas (ver respuesta `409`). |
+
+### Request example
+
+Requiere Bearer token (`Authorization: Bearer sk_proj_...`). Ver más en [Autenticacion](/api-reference/public-api#autenticacion).
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/campaigns \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Newsletter Junio",
+    "templateId": "9f1c2b34-5678-4abc-9def-012345678901",
+    "senderProfileId": "1a2b3c4d-5678-4abc-9def-012345678901",
+    "recipientIds": ["c0ffee00-1111-4222-8333-444455556666"],
+    "subject": "Novedades de junio",
+    "batchMode": true,
+    "batchSize": 5000,
+    "batchIntervalHours": 24
+  }'
+```
+
+</Tab>
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "campaign": {
+    "id": "7e8d9c0b-1234-4abc-9def-012345678901",
+    "name": "Newsletter Junio",
+    "status": "initializing",
+    "subject": "Novedades de junio",
+    "template_id": "9f1c2b34-5678-4abc-9def-012345678901",
+    "sender_profile_id": "1a2b3c4d-5678-4abc-9def-012345678901",
+    "total_recipients": 1,
+    "batch_mode": true,
+    "batch_size": 5000,
+    "batch_interval_hours": 24,
+    "total_batches": 1,
+    "current_batch": 0,
+    "utm_campaign": "rqe_7e8d9c0b12344abc9def012345678901"
+  }
+}
+```
+
+La campaña se devuelve de inmediato en estado `initializing`. Los registros de destinatarios se crean en segundo plano (2-30 segundos según el tamaño de la audiencia) y la campaña pasa a `pending`. El envío comienza automáticamente.
+
+El objeto `campaign` incluye la fila completa (también `created_at`, `next_batch_at`, `select_all_recipients`, `send_over_hours`, `variable_config`, `scheduled_for`, etc.).
+
+Ver más en [Estados de una campana](#estados-de-una-campana).
+
+### Detección de duplicados (409)
+
+Para evitar envíos duplicados, la API responde `409` en dos casos:
+
+- `subject_match_60min` — ya existe una campaña con el mismo asunto creada en los últimos 60 minutos.
+- `name_template_24h` — ya existe una campaña con el mismo nombre y template en las últimas 24 horas en estado no completado (`pending`, `paused`, `processing`, `initializing`).
+
+```json
+{
+  "warning": "duplicate_campaign",
+  "reason": "subject_match_60min",
+  "message": "Ya existe una campaña \"Newsletter Junio\" con el mismo asunto enviada hace 12 minutos",
+  "existingCampaignId": "7e8d9c0b-1234-4abc-9def-012345678901",
+  "existingCampaignStatus": "processing"
+}
+```
+
+Para crear la campaña de todos modos, reenvía el request con `"confirmDuplicate": true`.
+
+### Códigos de error
+
+| Código | Error |
+|---|---|
+| `400` | `Missing required fields: name, templateId, senderProfileId` |
+| `400` | `recipientIds is required when selectAllRecipients is false` |
+| `400` | `recipientCount is required when selectAllRecipients is true` |
+| `400` | `scheduledFor must be a string (ISO timestamp)` |
+| `401` | API key inválida o ausente. |
+| `409` | `duplicate_campaign` (ver arriba). |
+| `500` | `Failed to create campaign` |
+
+---
+
+## Campanas desde el Dashboard
+
+El Dashboard ofrece un asistente de 5 pasos para crear y enviar campañas sin código.
+
+### Flujo completo
+
+```
+1. Crear template     2. Crear campaña       3. Se envía automáticamente
+   (Editor visual)       (Asistente 5 pasos)    (Procesamiento en segundo plano)
+        |                      |                       |
+   Editor visual        Destinatarios,           Lotes automáticos,
+   con variables         template, sender,        rate limiting,
+   {{nombre}}            variables, schedule      reintentos
+```
+
+### Paso 1: Crear un template
+
+Desde **Templates → Nuevo Template**, diseña tu email en el editor visual. Los templates soportan variables dinámicas con sintaxis Handlebars:
+
+```html
+<h1>¡Hola {{nombre}}!</h1>
+<p>Tu código de descuento es: {{codigo}}</p>
+<p>{{default producto "nuestro catálogo"}}</p>
+```
+
+**Sintaxis de variables:**
+
+| Sintaxis | Descripción |
+|---|---|
+| `{{variable}}` | Sustitución básica |
+| `{{default variable "fallback"}}` | Valor por defecto si la variable no existe |
+| `{{#each items}}...{{/each}}` | Loop sobre arrays |
+
+**Helpers disponibles:**
+
+| Helper | Descripción |
+|---|---|
+| `{{formatCurrency precio "USD"}}` | Formatea un número como moneda. |
+| `{{formatDate fecha "long"}}` | Formatea una fecha (`short` por defecto). |
+| `{{multiply cantidad precio}}` | Multiplica dos números (2 decimales). |
+| `{{capitalize texto}}` / `{{uppercase texto}}` / `{{lowercase texto}}` | Transformación de texto. |
+
+**Variables integradas:** cada destinatario recibe automáticamente `{{name}}`, `{{email}}` y `{{unsubscribe_url}}`, además de los campos del contacto. Las claves de primer nivel también funcionan en minúsculas: si tus datos traen `NOMBRE`, el template puede usar `{{nombre}}`. Si el template no incluye `{{unsubscribe_url}}`, se agrega un footer de cancelación automáticamente y los emails incluyen headers `List-Unsubscribe`.
+
+### Paso 2: Crear la campana
+
+Desde **Campañas → Nueva Campaña**, el asistente te guía en 5 pasos:
+
+1. **Destinatarios** — Selecciona manualmente, usa "Seleccionar todos" o filtra por segmento.
+2. **Template y Remitente** — Elige el template creado y el perfil de remitente (dominio verificado).
+3. **Variables** (opcional) — Configura valores por defecto, mapea campos del destinatario a variables del template, o sube un CSV con valores personalizados por email.
+4. **Configuración de envío** — Activa modo por lotes, define tamaño de lote e intervalo, o distribuye el envío en N horas.
+5. **Revisar y Enviar** — Confirma todo y lanza la campaña.
+
+### Paso 3: Procesamiento automatico
+
+Una vez creada la campaña:
+
+1. Se crean los registros de destinatarios (estado: `pending`)
+2. La campaña pasa de `initializing` a `pending`
+3. Los destinatarios se procesan de forma asíncrona en segundo plano: se preparan las variables de cada uno, se encolan para envío y pasan a estado `queued`
+4. Cada email se renderiza con Handlebars, se envía a través de nuestra infraestructura de envío y pasa a estado `sent`
+5. Los eventos de delivery/bounce/complaint actualizan el estado final y disparan tus webhooks
+
+Ver más en [Webhooks](/api-reference/webhooks).
+
+### Configuracion avanzada
+
+#### Modo por lotes
+
+Divide el envío en lotes con intervalos usando `batchMode`, `batchSize` y `batchIntervalHours`. Útil para warming de dominio o para no saturar a tus destinatarios.
+
+**Ejemplo:** 50,000 destinatarios con lotes de 10,000 cada 24 horas = 5 días de envío gradual.
+
+Ver más en [`POST /v1/campaigns`](#post-v1campaigns).
+
+#### Distribucion horaria
+
+Distribuye el envío uniformemente en un período con `sendOverHours`.
+
+**Ejemplo:** 3,000 emails distribuidos en 6 horas = ~500 emails por hora.
+
+#### Variables por destinatario (CSV)
+
+Personaliza cada email subiendo un CSV con columnas:
+
+```csv
+email,nombre,codigo_descuento,producto
+juan@ejemplo.com,Juan,JUAN20,Plan Pro
+maria@ejemplo.com,Maria,MARIA15,Plan Business
+```
+
+Las variables del CSV tienen prioridad sobre los valores por defecto.
+
+---
+
+## Warming de dominio
+
+Para envíos grandes (>50,000 emails) desde un dominio nuevo o con poco historial, envía gradualmente:
+
+| Día | Volumen sugerido |
+|---|---|
+| Día 1 | ~50,000 |
+| Día 2 | ~75,000 |
+| Día 3+ | Resto |
+
+Usa el **modo por lotes** para automatizar esto. Enviar todo de golpe desde un dominio frío puede marcarte como spam en Gmail, Outlook y otros proveedores.
+
+Ver más en [Deliverability y autenticación](/concepts/deliverability).
+
+---
+
+## Estados de una campana
+
+| Estado | Descripción |
+|---|---|
+| `initializing` | Creando registros de destinatarios (transitorio, típicamente 2-30 segundos) |
+| `pending` | Lista para ser procesada |
+| `processing` | Enviando lotes activamente |
+| `paused` | Pausada manualmente por el usuario |
+| `rate_limited` | Pausada automáticamente por límite de tasa |
+| `completed` | Todos los emails fueron procesados |
+| `failed` | La campaña terminó con errores |
+| `cancelled` | Cancelada por el usuario |
