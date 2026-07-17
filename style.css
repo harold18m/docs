@@ -1,0 +1,5 @@
+/* Logo del topbar más grande */
+a[aria-label*="home" i] img {
+  height: 34px !important;
+  width: auto !important;
+}
