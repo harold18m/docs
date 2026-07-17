@@ -1,3 +1,8 @@
+/* Escala global: subir el font-size raíz agranda todo lo que usa rem */
+html {
+  font-size: 18px !important;
+}
+
 /* Logo del topbar más grande */
 a[aria-label*="home" i] img {
   height: 34px !important;
