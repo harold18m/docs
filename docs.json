@@ -65,7 +65,7 @@
     "primary": {
       "type": "button",
       "label": "Obtener API Key",
-      "href": "https://app.reallyquickemails.com"
+      "href": "https://app.reallyquickemails.com/irio/integrations/api"
     }
   },
   "contextual": {
