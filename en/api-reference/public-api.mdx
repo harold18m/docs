@@ -1,0 +1,588 @@
+---
+title: v1 Public API
+description: "Send individual, templated, or batch emails from the v1 API."
+---
+
+The ReallyQuickEmails (RQE) v1 public API exposes Bearer-token-authenticated endpoints for external integrations.
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+---
+
+## Authentication
+
+All endpoints require a Bearer token with a project key:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxx
+```
+
+Three key prefixes are accepted:
+
+| Prefix       | Mode                                      |
+| ------------ | ----------------------------------------- |
+| `sk_proj_...` | Production (live)                        |
+| `sk_live_...` | Production (live)                        |
+| `sk_test_...` | [Test mode](/en/concepts/test-mode)      |
+
+Keys are generated from the project's admin panel. An invalid or missing key responds `401 Unauthorized`. Requests with a body also require the `Content-Type: application/json` header.
+
+### Authentication error response
+
+```json
+{
+  "error": "Missing or invalid API key. Use: Authorization: Bearer sk_proj_..."
+}
+```
+
+If the prefix is valid but does not correspond to any project:
+
+```json
+{
+  "error": "Invalid API key"
+}
+```
+
+---
+
+## POST /v1/send-email
+
+Sends an individual email to up to 50 recipients.
+
+### Request Body
+
+| Field             | Type                | Required | Description                                                                                                       |
+| ----------------- | ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
+| `recipient_email` | string \| string[]  | Yes       | Recipient address(es). Accepts a string (1 recipient) or an array (max 50). For larger volumes use `/v1/send-batch`. |
+| `sender_email`    | string              | Yes       | Sender address (verified domain).                                                                                |
+| `sender_name`     | string              | No        | Sender display name. If omitted, the inbox shows only `sender_email`.                                            |
+| `html_body`       | string              | Yes       | HTML content of the email.                                                                                        |
+| `text_body`       | string              | No        | Plain-text version of the email (multipart fallback). Recommended to improve deliverability and accessibility.    |
+| `subject`         | string              | No        | Email subject. If omitted, `"Email from ReallyQuickEmails"` is used.                                             |
+| `cc`              | string \| string[]  | No        | Copy address(es). Max 10.                                                                                         |
+| `bcc`             | string \| string[]  | No        | Blind-copy address(es). Max 10.                                                                                   |
+| `attachments`     | array               | No        | List of attachments (max 10; max 10 MB per attachment and 10 MB total). Structure: `{ filename, url \| content (base64), contentType? }`. |
+| `environment`     | string              | No        | Routes this send's webhooks to the environment configured in the project. Format `[a-zA-Z0-9_.-]`, max 64 characters. If the key is not pre-configured in the dashboard, returns 400 `ENVIRONMENT_NOT_CONFIGURED`. See [Webhook environments](/en/concepts/webhook-environments). |
+
+> Open and click tracking is applied in the background (transactional senders skip it). This endpoint does **not** add an unsubscribe footer or `List-Unsubscribe` headers — those are added automatically in campaigns and in `/v1/send-template-email`; in `/v1/send-batch` you pass them via `custom_headers`.
+
+### Simple example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "user@example.com",
+    "sender_email": "hello@myapp.com",
+    "sender_name": "My Company",
+    "subject": "Welcome to our platform",
+    "html_body": "<h1>Welcome!</h1><p>Thanks for signing up.</p>"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+### Example with multiple recipients + cc + attachment
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": ["a@company.com", "b@company.com"],
+    "cc": "supervisor@company.com",
+    "sender_email": "notifications@myapp.com",
+    "sender_name": "My Company",
+    "subject": "Daily report",
+    "html_body": "<h1>Report</h1><p>Attached you will find the details.</p>",
+    "attachments": [
+      {
+        "filename": "report.pdf",
+        "url": "https://storage.myapp.com/reports/2026-04-28.pdf",
+        "contentType": "application/pdf"
+      }
+    ]
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "message": "Email sent successfully",
+  "email_id": "550e8400-e29b-41d4-a716-446655440000",
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+`email_id` is the send's activity ID — use it to correlate the events from your [webhooks](/en/api-reference/webhooks). It is `null` if the activity record could not be created.
+
+> **Suppression:** checked when processing the send in the background. If the recipient is suppressed (bounce, complaint, or unsubscribe), the email is not sent and the activity remains with status `suppressed`. This endpoint does not return a synchronous `skipped` response — `/v1/send-template-email` does check suppression before responding.
+
+### Error Codes
+
+| Code   | Description                                                             |
+| ------ | ----------------------------------------------------------------------- |
+| `400`  | `Missing required fields: recipient_email, sender_email, html_body`     |
+| `400`  | `recipient_email must be a non-empty string or array of strings`        |
+| `400`  | `Too many recipients in recipient_email (N). Maximum is 50. For larger sends use /v1/send-batch.` |
+| `400`  | `cc accepts at most 10 addresses` / `bcc accepts at most 10 addresses`  |
+| `400`  | `attachments must be an array` / `attachments accepts at most 10 items` |
+| `400`  | `ENVIRONMENT_NOT_CONFIGURED` — the `environment` is not configured in the project. |
+| `401`  | Invalid or missing API Key.                                             |
+| `500`  | Internal server error.                                                  |
+| `502`  | `Failed to process request` — internal error while processing the request. |
+
+Need scheduled sending, `dry_run`, or templates on individual sends? See [Advanced send API](/en/api-reference/send-email).
+
+---
+
+## POST /v1/send-template-email
+
+Sends an email with a pre-configured template and variable substitution (supports `{{#each}}` loops).
+
+### Request Body
+
+| Field                  | Type   | Required | Description                                                      |
+| ---------------------- | ------ | --------- | ---------------------------------------------------------------- |
+| `template_id`          | string | Yes*      | Template UUID.                                                  |
+| `template_internal_id` | number | Yes*      | Internal template ID (alternative to `template_id`).            |
+| `html_body`            | string | Yes*      | Direct HTML content with variables (template-less mode). Required if you send neither `template_id` nor `template_internal_id`. |
+| `recipient_email`      | string | Yes       | Recipient email address.                                        |
+| `sender_email`         | string | Yes       | Sender email address (verified domain).                         |
+| `sender_name`          | string | No        | Sender display name.                                            |
+| `subject`              | string | No        | Email subject. Supports variables. If omitted with a template, the template's subject is used. |
+| `variables`            | object | No        | Variables for substitution in the template.                     |
+| `environment`          | string | No        | Same as in `/v1/send-email`: routes webhooks to the configured environment. |
+
+> *You must send `template_id` OR `template_internal_id`. If you send neither, `html_body` (together with `recipient_email` and `sender_email`) is required.
+
+This endpoint automatically adds:
+
+- An unsubscribe footer if the HTML does not include the unsubscribe URL.
+- The `List-Unsubscribe` and `List-Unsubscribe-Post` headers (RFC 8058).
+- The `view_in_browser_url` and `unsubscribe_url` variables (if you don't send them yourself).
+
+Recipient replies go to the sender's inbox — see [Automatic Reply-To](#automatic-reply-to-inbound-email).
+
+### Example with template UUID
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template_id": "550e8400-e29b-41d4-a716-446655440000",
+    "recipient_email": "new.user@example.com",
+    "sender_email": "onboarding@myapp.com",
+    "variables": {
+      "name": "Carlos",
+      "plan": "Pro",
+      "trial_days": 14,
+      "dashboard_url": "https://myapp.com/dashboard"
+    }
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+### Example with template internal ID
+
+Each template has an auto-incremented internal ID within the project. Useful for integrations that prefer numeric IDs:
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template_internal_id": 5,
+    "recipient_email": "customer@example.com",
+    "sender_email": "noreply@myapp.com",
+    "variables": {
+      "name": "Maria"
+    }
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "message": "Email sent successfully",
+  "email_id": "550e8400-e29b-41d4-a716-446655440000",
+  "project_id": "123e4567-e89b-12d3-a456-426614174000",
+  "template_id": "550e8400-e29b-41d4-a716-446655440000",
+  "template_internal_id": null,
+  "variables_used": ["name", "plan", "trial_days", "dashboard_url", "view_in_browser_url", "unsubscribe_url"],
+  "used_cached_html": true
+}
+```
+
+`variables_used` includes the automatically injected variables (`view_in_browser_url`, `unsubscribe_url`). `used_cached_html` is `true` when the template's pre-rendered HTML was used.
+
+### Response when the recipient is suppressed (200)
+
+If the recipient unsubscribed or bounced, the email is skipped automatically:
+
+**Response** `200 OK`
+
+```json
+{
+  "message": "Email skipped — recipient is suppressed",
+  "skipped": true,
+  "suppression_reason": "unsubscribed",
+  "recipient": "customer@example.com"
+}
+```
+
+### Error Codes
+
+| Code   | Description                                                             |
+| ------ | ----------------------------------------------------------------------- |
+| `400`  | `Missing required fields: template_id/template_internal_id, OR recipient_email + sender_email + html_body` |
+| `400`  | `Missing required fields: recipient_email, sender_email`                |
+| `400`  | `template_internal_id requires valid project context`                   |
+| `400`  | `ENVIRONMENT_NOT_CONFIGURED` — the `environment` is not configured in the project. |
+| `401`  | Invalid or missing API Key.                                             |
+| `404`  | `Template not found with ID ...` — template not found for the project associated with the API Key. |
+| `422`  | `TEMPLATE_EMPTY` — the template renders to empty content. Re-save the template in the editor to regenerate the HTML. |
+| `500`  | Internal server error.                                                  |
+
+Learn more in [Templates](/en/guides/templates).
+
+---
+
+## POST /v1/send-batch
+
+Send bulk emails in a single request — up to **10,000 recipients** per call.
+
+### Request Body
+
+| Field            | Type              | Required | Description                                                         |
+| ---------------- | ----------------- | --------- | ------------------------------------------------------------------- |
+| `sender`         | string            | Yes       | Sender email address (verified domain).                             |
+| `senderName`     | string            | No        | Sender display name.                                                |
+| `subject`        | string            | Yes*      | Email subject. Required if `templateId` is not used.               |
+| `html`           | string            | Yes*      | HTML content. Required if `templateId` is not used.                 |
+| `templateId`     | string            | Yes*      | Template UUID. Alternative to `subject` + `html`.                   |
+| `email_type`     | string            | No        | Email type. Default: `"marketing"`.                                 |
+| `scheduled_at`   | string            | No        | ISO 8601 date for scheduled sending.                                |
+| `custom_headers` | object            | No        | Batch-level headers. Only `List-Unsubscribe` and `List-Unsubscribe-Post` are applied. |
+| `environment`    | string            | No        | Routes webhooks to the configured environment. Format `[a-zA-Z0-9_.-]`, max 64 characters. |
+| `dry_run`        | boolean           | No        | Previews the batch without queuing emails or creating activity records. See [Dry run](#dry-run). |
+| `recipients`     | array             | Yes       | List of recipients (maximum 10,000).                                |
+
+> *You must send `templateId` OR both `subject` + `html`.
+
+**Structure of each recipient:**
+
+| Field            | Type   | Required | Description                              |
+| ---------------- | ------ | --------- | ---------------------------------------- |
+| `email`          | string | Yes       | Recipient email address.                 |
+| `data`           | object | No        | Custom variables (Handlebars).           |
+| `custom_headers` | object | No        | Per-recipient headers. Override the batch's. |
+
+### Headers
+
+| Header            | Type   | Required | Description                       |
+| ----------------- | ------ | --------- | --------------------------------- |
+| `Idempotency-Key` | string | No        | Idempotency key (1–256 characters). See [Idempotency](#idempotency). |
+
+### Example with direct HTML
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-batch \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": "noreply@yourdomain.com",
+    "senderName": "My Company",
+    "subject": "Special offer for you, {name}",
+    "html": "<h1>Hi {name}!</h1><p>We have a special offer on {product}.</p>",
+    "recipients": [
+      {
+        "email": "juan@example.com",
+        "data": { "name": "Juan", "product": "Pro Plan" }
+      },
+      {
+        "email": "maria@example.com",
+        "data": { "name": "Maria", "product": "Business Plan" }
+      }
+    ]
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+const { data, error } = await rqe.emails.sendBatch({
+  sender: 'noreply@yourdomain.com',
+  senderName: 'My Company',
+  subject: 'Special offer for you, {name}',
+  html: '<h1>Hi {name}!</h1><p>We have a special offer on {product}.</p>',
+  recipients: [
+    { email: 'juan@example.com', data: { name: 'Juan', product: 'Pro Plan' } },
+    { email: 'maria@example.com', data: { name: 'Maria', product: 'Business Plan' } },
+  ],
+});
+
+if (error) console.error(error);
+else console.log('Batch queued:', data.batch_id);
+```
+
+</Tab>
+
+</Tabs>
+
+### Example with template
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-batch \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": "noreply@yourdomain.com",
+    "senderName": "My Company",
+    "templateId": "550e8400-e29b-41d4-a716-446655440000",
+    "recipients": [
+      { "email": "juan@example.com", "data": { "name": "Juan" } },
+      { "email": "maria@example.com", "data": { "name": "Maria" } }
+    ]
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.emails.sendBatch({
+  sender: 'noreply@yourdomain.com',
+  senderName: 'My Company',
+  templateId: '550e8400-e29b-41d4-a716-446655440000',
+  recipients: [
+    { email: 'juan@example.com', data: { name: 'Juan' } },
+    { email: 'maria@example.com', data: { name: 'Maria' } },
+  ],
+});
+```
+
+</Tab>
+
+</Tabs>
+
+### Example with scheduled send
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-batch \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender": "noreply@yourdomain.com",
+    "subject": "Weekly newsletter",
+    "html": "<h1>Newsletter</h1><p>News from this week...</p>",
+    "scheduled_at": "2026-03-25T10:00:00Z",
+    "recipients": [
+      { "email": "sub1@example.com" },
+      { "email": "sub2@example.com" }
+    ]
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.emails.sendBatch({
+  sender: 'noreply@yourdomain.com',
+  subject: 'Weekly newsletter',
+  html: '<h1>Newsletter</h1><p>News from this week...</p>',
+  scheduled_at: '2026-03-25T10:00:00Z',
+  recipients: [
+    { email: 'sub1@example.com' },
+    { email: 'sub2@example.com' },
+  ],
+});
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "batch_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "total": 2,
+  "queued": 2,
+  "scheduled": false,
+  "scheduled_for": null,
+  "activities": [
+    { "email": "juan@example.com", "activity_id": "uuid-1" },
+    { "email": "maria@example.com", "activity_id": "uuid-2" }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `batch_id` | string | Unique batch UUID for reference. |
+| `total` | number | Total number of recipients. |
+| `queued` | number | Number of emails queued for sending. |
+| `scheduled` | boolean | `true` if `scheduled_at` is in the future. |
+| `scheduled_for` | string \| null | The `scheduled_at` value sent, or `null` if immediate. |
+| `activities` | array | List with `email` and `activity_id` per recipient for tracking. |
+
+Each recipient's `activity_id` lets you track delivery status via webhooks.
+
+> **Suppression:** as in `/v1/send-email`, applied when processing each send in the background — suppressed recipients are skipped and their activity remains with status `suppressed`.
+
+### Idempotency
+
+Send the optional `Idempotency-Key` header (1–256 characters) to avoid duplicates on retries. 2xx and 4xx responses are cached for **24 hours**, scoped per project. If you repeat the key within that window, you receive the cached response without reprocessing the batch, with the `Idempotency-Replayed: true` header.
+
+In the Node.js SDK, pass it as the second argument: `rqe.emails.sendBatch(params, { idempotencyKey })`. Learn more in [Node.js SDK](/en/guides/sdk-nodejs).
+
+### Dry run
+
+With `"dry_run": true`, the API returns a preview without queuing emails or creating activity records:
+
+```json
+{
+  "dry_run": true,
+  "test_mode": false,
+  "recipients_count": 2,
+  "would_send": {
+    "template_id": null,
+    "subject": "Special offer for you, {name}",
+    "from": "My Company <noreply@yourdomain.com>",
+    "first_recipient": "juan@example.com"
+  }
+}
+```
+
+### Limits
+
+| Limit | Value |
+|---|---|
+| Recipients per request | 10,000 |
+| Idempotency cache | 24 hours |
+
+> **Tip:** For more than 10,000 recipients, use multiple calls or create a campaign from the RQE Dashboard, which handles batching and retries automatically. Learn more in [Campaigns](/en/api-reference/campaigns).
+
+### Error Codes
+
+| Code   | Description                                                             |
+| ------ | ----------------------------------------------------------------------- |
+| `400`  | `sender is required`                                                    |
+| `400`  | `subject or templateId is required`                                     |
+| `400`  | `html or templateId is required`                                        |
+| `400`  | `recipients array is required and must not be empty`                    |
+| `400`  | `Too many recipients: X. Maximum is 10,000 per batch.`                  |
+| `400`  | `recipients[N].email is required`                                       |
+| `400`  | `environment must be a string of [a-zA-Z0-9_.-] up to 64 chars`         |
+| `400`  | `ENVIRONMENT_NOT_CONFIGURED` — the `environment` is not configured in the project. |
+| `401`  | Invalid or missing API Key.                                             |
+| `500`  | `Failed to create activity records` / `Failed to process batch`         |
+
+---
+
+## Automatic Reply-To (Inbound Email)
+
+Emails from `/v1/send-email` and `/v1/send-batch` automatically include a `Reply-To` header with the sender's name:
+
+```
+Reply-To: "My Company" <r-x7K9mP2q@rqe.inbound.reallyquickemails.com>
+```
+
+Email clients (Gmail, Outlook, Apple Mail) display the **sender's name**, not the technical address. When the recipient replies, the reply is routed to RQE and associated with the original thread.
+
+No configuration required. To receive notifications of incoming replies, configure an [inbound email webhook](/en/api-reference/webhooks#inbound-replies-with-attachments).
+
+In `/v1/send-template-email`, replies go directly to the sender's inbox: the `Reply-To` uses the reply address configured in the sender's profile, or `sender_email` itself if there is none.
+
+---
+
+## Data Management APIs
+
+Besides sending, the v1 API includes endpoints to manage leads, events, tags, and attributes. Full documentation at:
+
+- **[Leads API](/en/api-reference/leads)** — CRUD for leads, segments, tags, and attributes
+- **[Events API](/en/api-reference/events)** — Custom event tracking from your apps
+
+### Quick summary
+
+| Category | Endpoint | Description |
+|---|---|---|
+| **Leads** | `POST /v1/leads` | Create/update leads (single or bulk up to 1,000) |
+| | `GET /v1/leads` | List with pagination and filters |
+| | `GET /v1/leads/:id` | Lead detail with segments |
+| | `PUT /v1/leads/:id` | Update lead |
+| | `DELETE /v1/leads/:id` | Delete lead |
+| **Segments** | `POST /v1/leads/:id/segments` | Add lead to segments |
+| | `DELETE /v1/leads/:id/segments/:segmentId` | Remove from segment |
+| **Tags** | `POST /v1/leads/:email/tags` | Add tags |
+| | `DELETE /v1/leads/:email/tags` | Remove tags |
+| | `GET /v1/leads/:email/tags` | List tags |
+| **Attributes** | `POST /v1/leads/:email/attributes` | Set/merge custom attributes |
+| | `GET /v1/leads/:email/attributes` | Get attributes |
+| **Events** | `POST /v1/events` | Track an event |
+| | `POST /v1/events/bulk` | Track up to 1,000 events |
+| | `GET /v1/events` | List events with filters |

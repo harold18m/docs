@@ -1,0 +1,887 @@
+---
+title: Domains
+description: "Register and verify sending domains, and manage their DNS records."
+---
+
+Endpoints for managing sending domains: registration, DNS verification, status, and sender profile.
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+---
+
+## Authentication
+
+All domain endpoints require a Secret Key:
+
+| Header          | Type   | Required | Description                       |
+| --------------- | ------ | -------- | --------------------------------- |
+| `Authorization` | string | Yes      | `Bearer sk_proj_...`              |
+| `Content-Type`  | string | Yes*     | `application/json` (on POST/PUT). |
+
+---
+
+## POST /domains/register
+
+Registers a sending domain: creates the sending identity, generates the DNS records, and creates the sender profile.
+
+### Request Body
+
+| Field          | Type   | Required | Description                                                        |
+| -------------- | ------ | -------- | ------------------------------------------------------------------ |
+| `domain`       | string | Yes      | Domain to register (e.g. `mystore.com`).                           |
+| `sender_name`  | string | Yes      | Sender name (e.g. `My Store`).                                     |
+| `sender_email` | string | Yes      | Sender email address. Must end in `@{domain}` (e.g. `sales@mystore.com`). |
+| `external_key` | string | No       | External key for third-party integrations.                        |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/register \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "domain": "mystore.com",
+    "sender_name": "My Store",
+    "sender_email": "sales@mystore.com"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mystore.com",
+  "verification_status": "pending",
+  "sender_profile_id": "123e4567-e89b-12d3-a456-426614174000",
+  "sender": {
+    "from_name": "My Store",
+    "from_email": "sales@mystore.com",
+    "domain_authenticated": false
+  },
+  "verification_token": "abcdef1234567890abcdef1234567890",
+  "dkim_tokens": ["abc123", "def456", "ghi789"],
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "a2b3c4d5-e6f7-4081-92a3-b4c5d6e7f809",
+      "record_type": "CNAME",
+      "name": "abc123._domainkey",
+      "value": "abc123.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800
+    },
+    {
+      "id": "b3c4d5e6-f708-4192-a3b4-c5d6e7f8091a",
+      "record_type": "CNAME",
+      "name": "def456._domainkey",
+      "value": "def456.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800
+    },
+    {
+      "id": "c4d5e6f7-0819-42a3-b4c5-d6e7f8091a2b",
+      "record_type": "CNAME",
+      "name": "ghi789._domainkey",
+      "value": "ghi789.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800
+    },
+    {
+      "id": "d5e6f708-192a-43b4-c5d6-e7f8091a2b3c",
+      "record_type": "TXT",
+      "name": "@",
+      "value": "v=spf1 include:amazonses.com ~all",
+      "purpose": "spf",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "e6f70819-2a3b-44c5-d6e7-f8091a2b3c4d",
+      "record_type": "TXT",
+      "name": "_dmarc",
+      "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@mystore.com",
+      "purpose": "dmarc",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
+      "record_type": "CNAME",
+      "name": "bounce",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "not_set",
+      "ttl_hint": 300
+    }
+  ]
+}
+```
+
+Each DNS record includes: `id`, `record_type` (`TXT` or `CNAME`), `name`, `value`, `purpose` (`ses_verification`, `dkim`, `spf`, `dmarc`, `return_path`), `status`, and `ttl_hint` (suggested TTL in seconds).
+
+`status` values: `not_set`, `propagating`, `mismatch`, `verified`.
+
+### Generated DNS records
+
+| # | Type | Name | Purpose | Notes |
+|---|------|------|---------|-------|
+| 1 | TXT | `_amazonses` | Domain verification | Value generated automatically on registration |
+| 2-4 | CNAME | `{token}._domainkey` | DKIM | 3 records, tokens generated automatically |
+| 5 | TXT | `@` (domain root) | SPF | `v=spf1 include:amazonses.com ~all` |
+| 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@{domain}` |
+| 7 | CNAME | `bounce` | Return-Path | Points to `feedback-smtp.us-east-1.amazonses.com` |
+
+> **Note:** Names are relative to the domain. With domain `mystore.com`, the `_amazonses` record is configured as `_amazonses.mystore.com`. Some providers append the domain automatically, so you only enter `_amazonses`.
+
+Configure the DNS records with your provider and call `POST /domains/{domain}/verify` to validate. See [Deliverability](/en/concepts/deliverability).
+
+### Error Codes
+
+| Code   | Description                                              |
+| ------ | -------------------------------------------------------- |
+| `400`  | Missing required fields, malformed domain, or `sender_email` does not end in `@{domain}`. |
+| `401`  | Invalid API Key.                                         |
+| `409`  | The domain is already registered in this project.        |
+| `500`  | Internal error while registering the domain.             |
+
+---
+
+## GET /domains/:domain/dns-records
+
+Returns the stored DNS records with their last known status, without external lookups.
+
+### Path Parameters
+
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Registered domain (e.g. `mystore.com`). |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET https://api.reallyquickemails.com/domains/mystore.com/dns-records \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mystore.com",
+  "verification_status": "pending",
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "not_set",
+      "ttl_hint": 300,
+      "last_checked_at": null
+    },
+    {
+      "id": "a2b3c4d5-e6f7-4081-92a3-b4c5d6e7f809",
+      "record_type": "CNAME",
+      "name": "abc123._domainkey",
+      "value": "abc123.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "not_set",
+      "ttl_hint": 1800,
+      "last_checked_at": null
+    },
+    {
+      "id": "d5e6f708-192a-43b4-c5d6-e7f8091a2b3c",
+      "record_type": "TXT",
+      "name": "@",
+      "value": "v=spf1 include:amazonses.com ~all",
+      "purpose": "spf",
+      "status": "not_set",
+      "ttl_hint": 300,
+      "last_checked_at": null
+    },
+    {
+      "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
+      "record_type": "CNAME",
+      "name": "bounce",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "not_set",
+      "ttl_hint": 300,
+      "last_checked_at": null
+    }
+  ]
+}
+```
+
+Per-record `status`: `not_set`, `propagating`, `mismatch`, or `verified`. `last_checked_at` is `null` until the first verification with `POST /domains/{domain}/verify`.
+
+> **Note:** SPF and DMARC always appear with `status: "not_set"`: their propagation is not validated automatically.
+
+### Error Codes
+
+| Code   | Description                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | Invalid API Key.                                |
+| `404`  | Domain not found in the project.                |
+
+---
+
+## POST /domains/:domain/verify
+
+Checks the DNS status directly against the sending infrastructure, updates the stored status of the records, and returns whether the domain can send.
+
+### Path Parameters
+
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Registered domain (e.g. `mystore.com`). |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/mystore.com/verify \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mystore.com",
+  "verification_status": "verified",
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "My Store",
+    "from_email": "sales@mystore.com",
+    "domain_authenticated": true
+  },
+  "details": {
+    "domain_verification": "Success",
+    "dkim_verification": "Success",
+    "mail_from_status": "Pending"
+  },
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "verified",
+      "last_checked_at": "2025-03-10T18:45:00.000Z"
+    },
+    {
+      "id": "a2b3c4d5-e6f7-4081-92a3-b4c5d6e7f809",
+      "record_type": "CNAME",
+      "name": "abc123._domainkey",
+      "value": "abc123.dkim.amazonses.com",
+      "purpose": "dkim",
+      "status": "verified",
+      "last_checked_at": "2025-03-10T18:45:00.000Z"
+    },
+    {
+      "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
+      "record_type": "CNAME",
+      "name": "bounce",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "propagating",
+      "last_checked_at": "2025-03-10T18:45:00.000Z"
+    }
+  ],
+  "verification_token": "abcdef1234567890abcdef1234567890",
+  "dkim_tokens": ["abc123", "def456", "ghi789"],
+  "can_send": true
+}
+```
+
+Verification checks three things:
+
+1. **Domain verification** — The `_amazonses` TXT record is configured.
+2. **DKIM** — All 3 DKIM CNAME records are configured and propagated.
+3. **MAIL FROM** — The Return-Path CNAME record (`bounce`) is configured.
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `verification_status` | `verified` (domain and DKIM verified), `failed` (a check failed), or `pending`. |
+| `details.domain_verification` | Raw status of the domain verification: `Success`, `Pending`, `Failed`, `TemporaryFailure`, or `NotStarted`. |
+| `details.dkim_verification` | Raw DKIM status (same values). |
+| `details.mail_from_status` | Raw MAIL FROM status (same values). |
+| `sender_profile` | The domain's active sender profile, or `null` if none exists. |
+| `can_send` | `true` when domain and DKIM are verified. |
+
+`can_send` is `true` when `details.domain_verification` and `details.dkim_verification` are `Success` (equivalent to `verification_status: "verified"`). MAIL FROM is not required to send, but it improves deliverability.
+
+### Error Codes
+
+| Code   | Description                                       |
+| ------ | ------------------------------------------------- |
+| `401`  | Invalid API Key.                                  |
+| `404`  | Domain not found in the project.                  |
+| `500`  | Error communicating with the sending infrastructure. |
+
+---
+
+## GET /domains/:domain/status
+
+Returns the stored verification status, without querying the sending infrastructure. Fast, ideal for polling from the interface.
+
+### Path Parameters
+
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Registered domain (e.g. `mystore.com`). |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET https://api.reallyquickemails.com/domains/mystore.com/status \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mystore.com",
+  "verification_status": "verified",
+  "external_key": null,
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "My Store",
+    "from_email": "sales@mystore.com",
+    "domain_authenticated": true
+  },
+  "dns_records_summary": [
+    { "purpose": "ses_verification", "records_count": 1, "all_verified": true },
+    { "purpose": "dkim", "records_count": 3, "all_verified": true },
+    { "purpose": "spf", "records_count": 1, "all_verified": false },
+    { "purpose": "dmarc", "records_count": 1, "all_verified": false },
+    { "purpose": "return_path", "records_count": 1, "all_verified": true }
+  ],
+  "can_send": true,
+  "last_verified_at": "2025-03-10T18:45:00.000Z"
+}
+```
+
+`dns_records_summary` groups the records by purpose: `records_count` is how many there are and `all_verified` indicates whether all of them are `status: "verified"`. `can_send` is `true` when `verification_status` is `verified`. `last_verified_at` is the last update to the domain's status.
+
+### Error Codes
+
+| Code   | Description                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | Invalid API Key.                                |
+| `404`  | Domain not found in the project.                |
+
+---
+
+## GET /domains
+
+Looks up a domain by name and returns its basic information and sender profile.
+
+### Query Parameters
+
+| Parameter | Type   | Required | Description                          |
+| --------- | ------ | -------- | ------------------------------------ |
+| `domain`  | string | Yes      | Domain name to look up.              |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET "https://api.reallyquickemails.com/domains?domain=mystore.com" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mystore.com",
+  "verification_status": "verified",
+  "external_key": null,
+  "can_send": true,
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "My Store",
+    "from_email": "sales@mystore.com",
+    "domain_authenticated": true
+  },
+  "created_at": "2025-03-01T12:00:00.000Z"
+}
+```
+
+### Error Codes
+
+| Code   | Description                                              |
+| ------ | -------------------------------------------------------- |
+| `400`  | `domain` parameter not provided.                         |
+| `401`  | Invalid API Key.                                         |
+| `404`  | Domain not found in the project.                         |
+
+---
+
+## POST /domains/:domain/recreate
+
+Deletes and recreates the domain's sending identity. Useful when DKIM gets stuck in a failed state.
+
+### Path Parameters
+
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Registered domain (e.g. `mystore.com`). |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/mystore.com/recreate \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "domain": "mystore.com",
+  "verification_status": "pending",
+  "verification_token": "abcdef1234567890abcdef1234567890",
+  "dkim_tokens": ["abc123", "def456", "ghi789"],
+  "dns_records": [
+    {
+      "id": "f1a2b3c4-d5e6-4f70-8a91-b2c3d4e5f607",
+      "record_type": "TXT",
+      "name": "_amazonses",
+      "value": "abcdef1234567890abcdef1234567890",
+      "purpose": "ses_verification",
+      "status": "not_set",
+      "ttl_hint": 300
+    }
+  ],
+  "message": "Domain identity recreated in SES. DNS records may already be propagated - verify in a few seconds."
+}
+```
+
+It keeps the domain and sender profile, regenerates the DNS records, and resets `verification_status` to `pending`. Then call `POST /domains/{domain}/verify`. If the records were already propagated, verification can complete in seconds.
+
+### Error Codes
+
+| Code   | Description                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | Invalid API Key.                                |
+| `404`  | Domain not found in the project.                |
+| `500`  | Error recreating the sending identity.          |
+
+---
+
+## DELETE /domains/:domain
+
+Removes the domain from the sending infrastructure and deactivates its sender profile.
+
+### Path Parameters
+
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Domain to delete (e.g. `mystore.com`). |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/domains/mystore.com \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "domain": "mystore.com",
+  "message": "Domain and associated sender profile removed"
+}
+```
+
+The same domain can be registered again later.
+
+> **Warning:** After deleting it, you will need to register the domain and configure the DNS records again to send from it.
+
+### Error Codes
+
+| Code   | Description                                     |
+| ------ | ----------------------------------------------- |
+| `401`  | Invalid API Key.                                |
+| `404`  | Domain not found in the project.                |
+
+---
+
+## PUT /domains/:domain/sender
+
+Updates the sender profile associated with a domain.
+
+### Path Parameters
+
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| `domain`  | string | Associated domain (e.g. `mystore.com`). |
+
+### Request Body
+
+| Field          | Type   | Required | Description                                    |
+| -------------- | ------ | -------- | ---------------------------------------------- |
+| `sender_name`  | string | Yes      | Visible sender name.                           |
+| `sender_email` | string | Yes      | Sender email address. Must end in `@{domain}`. |
+| `reply_email`  | string | No       | Email address for replies (Reply-To).          |
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X PUT https://api.reallyquickemails.com/domains/mystore.com/sender \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "sender_name": "My Store Team",
+    "sender_email": "sales@mystore.com",
+    "reply_email": "support@mystore.com"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "sender_profile_id": "123e4567-e89b-12d3-a456-426614174000",
+  "from_name": "My Store Team",
+  "from_email": "sales@mystore.com",
+  "domain_authenticated": true
+}
+```
+
+> **Note:** The `reply_email` field is saved but not included in the response.
+
+### Error Codes
+
+| Code   | Description                                              |
+| ------ | -------------------------------------------------------- |
+| `400`  | Missing `sender_name` or `sender_email`, or `sender_email` does not match the domain. |
+| `401`  | Invalid API Key.                                        |
+| `404`  | Domain or sender profile not found in the project.      |
+
+---
+
+## Email Verification (Magic Link)
+
+An alternative to full domain verification: verify an individual email as a sender without configuring DNS. A verification email is sent; clicking the link verifies the email for sending.
+
+> **Note:** It is faster but does not include DKIM/SPF. For better deliverability, verify the full domain.
+
+When the status changes (from `pending` to `verified` or `failed`), RQE emits the `sender.verified` or `sender.failed` webhook. See [Webhooks](/en/api-reference/webhooks).
+
+---
+
+### POST /domains/verify-email
+
+Starts the verification of an email as a sender by sending it a verification link.
+
+#### Request Body
+
+| Field          | Type   | Required | Description                                    |
+| -------------- | ------ | -------- | ---------------------------------------------- |
+| `sender_email` | string | Yes      | Email to verify as a sender.                   |
+| `sender_name`  | string | Yes      | Visible sender name.                           |
+| `external_key` | string | No       | External key for integrations.                |
+
+#### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/verify-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender_email": "sales@gmail.com",
+    "sender_name": "My Company"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `201`
+
+```json
+{
+  "success": true,
+  "identity_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sender_email": "sales@gmail.com",
+  "verification_status": "pending",
+  "sender_profile_id": "123e4567-e89b-12d3-a456-426614174000",
+  "sender": {
+    "from_name": "My Company",
+    "from_email": "sales@gmail.com",
+    "email_verified": false,
+    "domain_authenticated": false
+  },
+  "message": "Verification email sent. The sender must click the link in the email to verify."
+}
+```
+
+The sender will receive an email with a link. Clicking it verifies their email.
+
+#### Errors
+
+| Code | Description |
+|---|---|
+| `400` | Missing `sender_email` or `sender_name`, or invalid email format |
+| `401` | Invalid API Key |
+| `409` | Email already registered in this project |
+
+---
+
+### GET /domains/verify-email/status
+
+Queries the verification status of an email against the sending infrastructure in real time.
+
+#### Query Parameters
+
+| Parameter | Type   | Required | Description                    |
+| --------- | ------ | -------- | ------------------------------ |
+| `email`   | string | Yes      | Email to query.                |
+
+#### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/domains/verify-email/status?email=sales@gmail.com" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200`
+
+```json
+{
+  "success": true,
+  "identity_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sender_email": "sales@gmail.com",
+  "verification_status": "verified",
+  "sender_profile": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "My Company",
+    "from_email": "sales@gmail.com",
+    "email_verified": true,
+    "domain_authenticated": false
+  },
+  "can_send": true
+}
+```
+
+`sender_profile` can be `null` if no active sender profile exists. `can_send` is `true` when `verification_status` is `verified`.
+
+#### Verification statuses
+
+| Status | Description |
+|---|---|
+| `pending` | Verification email sent, waiting for the sender to click |
+| `verified` | Sender verified, ready to send |
+| `failed` | Verification failed |
+
+#### Errors
+
+| Code | Description |
+|---|---|
+| `400` | `email query parameter is required` |
+| `401` | Invalid API Key |
+| `404` | Email not found in the project |
+
+---
+
+### POST /domains/verify-email/resend
+
+Resends the verification email to the sender. Only valid while verification is `pending`.
+
+#### Request Body
+
+| Field          | Type   | Required | Description                    |
+| -------------- | ------ | -------- | ------------------------------ |
+| `sender_email` | string | Yes      | Email to resend to.            |
+
+#### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/verify-email/resend \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sender_email": "sales@gmail.com"
+  }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200`
+
+```json
+{
+  "success": true,
+  "message": "Verification email resent",
+  "sender_email": "sales@gmail.com"
+}
+```
+
+#### Errors
+
+| Code | Description |
+|---|---|
+| `400` | Missing `sender_email`, or verification is not in `pending` state |
+| `401` | Invalid API Key |
+| `404` | Email not found in the project |
+
+---
+
+### DELETE /domains/verify-email
+
+Deletes an email verified as a sender; the same email can be registered again later.
+
+#### Query Parameters
+
+| Parameter | Type   | Required | Description                    |
+| --------- | ------ | -------- | ------------------------------ |
+| `email`   | string | Yes      | Email to delete.               |
+
+#### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE "https://api.reallyquickemails.com/domains/verify-email?email=sales@gmail.com" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200`
+
+```json
+{
+  "success": true,
+  "sender_email": "sales@gmail.com",
+  "message": "Email identity and associated sender profile removed"
+}
+```
+
+#### Errors
+
+| Code | Description |
+|---|---|
+| `400` | `email query parameter is required` |
+| `401` | Invalid API Key |
+| `404` | Email not found in the project |

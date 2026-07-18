@@ -1,0 +1,176 @@
+---
+title: Scheduling Sends
+description: "Schedule sends with scheduled_at: ISO 8601, natural language, and timezones."
+---
+
+Schedule emails for a future date and time with the [`POST /send-email`](/en/api-reference/send-email) endpoint. Specify the date with ISO 8601 timestamps or with natural language in English.
+
+> For bulk sends, `POST /v1/send-batch` also accepts `scheduled_at` in ISO 8601 format. See [Public API v1](/en/api-reference/public-api).
+
+## Relevant fields
+
+| Field | Type | Description |
+|---|---|---|
+| `scheduled_at` | `string` | Send date and time. Accepts ISO 8601 or natural language in English. |
+| `timezone` | `string` | IANA timezone name. Optional; only applies when `scheduled_at` is natural language. |
+
+## `scheduled_at` format
+
+### ISO 8601 timestamps
+
+Specify an exact date and time in ISO 8601 format. Always include the timezone offset (or `Z` for UTC). This is the recommended way to schedule an exact instant:
+
+```
+"2026-10-16T15:00:00+09:00"
+"2026-12-25T09:00:00-03:00"
+"2027-01-15T08:30:00Z"
+```
+
+With an ISO 8601 timestamp that includes an offset, the `timezone` field is ignored: the timestamp's offset determines the send instant.
+
+### Natural language
+
+You can also use natural-language expressions (in English). The API interprets them relative to the current moment:
+
+```
+"tomorrow at 3pm"
+"in 2 hours"
+"next monday at 9am"
+```
+
+With natural language, the `timezone` field (IANA name) defines the zone in which the schedule is confirmed (`scheduled_for_local` in the response). If not specified, the project's default zone is used (`default_timezone`); if the project doesn't have one, UTC is assumed.
+
+Always check the response's `scheduled_for` field (UTC) to confirm the exact instant. For absolute precision, use an ISO 8601 timestamp with an offset.
+
+## `timezone` format
+
+The `timezone` field accepts IANA timezone names:
+
+| Format | Example |
+|---|---|
+| IANA name | `"America/Santiago"`, `"Asia/Tokyo"`, `"Europe/Madrid"` |
+| UTC | `"UTC"` |
+
+For a fixed UTC offset (for example `-03:00`), include it directly in the `scheduled_at` ISO 8601 timestamp instead of using the `timezone` field.
+
+If `timezone` is not included, the API uses the project's `default_timezone`, or UTC if none is configured.
+
+## Validation
+
+The date must be in the future. If `scheduled_at` resolves to a past date, the API returns `400 Bad Request` with the message `scheduled_at must be in the future`.
+
+## Processing
+
+Scheduled emails are processed in the background every 30 seconds. An email may be sent up to 30 seconds after the scheduled time.
+
+## Limitations
+
+- **One recipient per scheduled send.** If `recipient` is an array, only the send to the first recipient is scheduled.
+- **`cc`, `bcc`, `attachments`, and `senderName` are not preserved** in scheduled sends — they only apply to immediate sends.
+- Content is defined with `html` + `subject`, or with `templateId` (UUID of a template). The `data` object with variables is preserved and applied at send time.
+
+## Response
+
+When an email is scheduled successfully, the response includes these fields:
+
+| Field | Description |
+|---|---|
+| `success` | `true` if the request was accepted. |
+| `scheduled` | `true` when the email was scheduled (rather than queued for immediate sending). |
+| `scheduled_send_id` | UUID of the scheduled email. |
+| `scheduled_for` | Send date and time in UTC (ISO 8601). |
+| `scheduled_for_local` | Send date and time in ISO 8601 with the offset of the timezone used. |
+| `timezone` | Timezone used: IANA name, or offset label (e.g. `"UTC+9"`) when it comes from the ISO timestamp. |
+| `message` | Confirmation message (in English). |
+
+## Examples
+
+### Schedule with an ISO 8601 timestamp
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "recipient": "customer@example.com",
+    "sender": "sales@mystore.com",
+    "subject": "Appointment reminder",
+    "html": "<p>This is a reminder of your appointment tomorrow at 3:00 PM.</p>",
+    "scheduled_at": "2026-10-16T15:00:00+09:00"
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "scheduled": true,
+  "scheduled_send_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "scheduled_for": "2026-10-16T06:00:00.000Z",
+  "scheduled_for_local": "2026-10-16T15:00:00.000+09:00",
+  "timezone": "UTC+9",
+  "message": "Email scheduled for October 16, 2026 at 3:00 PM GMT+9"
+}
+```
+
+### Schedule with natural language and a timezone
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "recipient": "customer@example.com",
+    "sender": "sales@mystore.com",
+    "subject": "Special offer",
+    "html": "<p>Take advantage of our special offer this week.</p>",
+    "scheduled_at": "tomorrow at 3pm",
+    "timezone": "America/Santiago"
+  }'
+```
+
+Response (illustrative values — they depend on when the request is made):
+
+```json
+{
+  "success": true,
+  "scheduled": true,
+  "scheduled_send_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "scheduled_for": "2026-06-06T19:00:00.000Z",
+  "scheduled_for_local": "2026-06-06T15:00:00.000-04:00",
+  "timezone": "America/Santiago",
+  "message": "Email scheduled for June 6, 2026 at 3:00 PM GMT-4"
+}
+```
+
+### Schedule with a numeric offset
+
+The `timezone` field only accepts IANA names. For a fixed UTC offset, specify it directly in the ISO 8601 timestamp:
+
+```bash
+curl -X POST https://api.reallyquickemails.com/send-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -d '{
+    "recipient": "customer@example.com",
+    "sender": "sales@mystore.com",
+    "subject": "Follow-up",
+    "html": "<p>We are following up on your request.</p>",
+    "scheduled_at": "2026-10-20T09:00:00-03:00"
+  }'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "scheduled": true,
+  "scheduled_send_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+  "scheduled_for": "2026-10-20T12:00:00.000Z",
+  "scheduled_for_local": "2026-10-20T09:00:00.000-03:00",
+  "timezone": "UTC-3",
+  "message": "Email scheduled for October 20, 2026 at 9:00 AM GMT-3"
+}
+```

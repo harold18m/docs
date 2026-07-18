@@ -1,0 +1,150 @@
+---
+title: Deliverability and authentication
+description: "SPF, DKIM, DMARC and reputation: how to reach the inbox."
+---
+
+How ReallyQuickEmails (RQE) authenticates your sends and what's behind "does it reach the inbox?". This isn't a step-by-step tutorial (for that, see [Domains](/en/api-reference/domains)), but the theory to diagnose problems and decide what to configure.
+
+## The authentication stack
+
+When a mail server (Gmail, Outlook) receives an email, it runs 4 checks to decide whether it goes to the inbox or to spam:
+
+| Check | What it verifies | Who configures it |
+|---|---|---|
+| **SPF** | The server that sent the email is allowed to send from your domain | Your domain's DNS |
+| **DKIM** | The email was cryptographically signed with a key you published in DNS | DNS + RQE generates and signs |
+| **DMARC** | Policy on what to do if SPF/DKIM fail (none/quarantine/reject) | Your domain's DNS |
+| **MAIL FROM domain** | The "envelope sender" (Return-Path) matches your domain, not `amazonses.com` | DNS + RQE |
+
+With all 4 passing, your email has **strict alignment** and deliverability improves a lot.
+
+## SPF (Sender Policy Framework)
+
+A TXT record in your DNS that lists which servers may send from your domain. When RQE sends from `noreply@yourdomain.com`, Gmail queries the SPF of `yourdomain.com` and verifies that the sending server is on the list.
+
+Example (the one RQE generates when you register your domain):
+
+```
+yourdomain.com. TXT "v=spf1 include:amazonses.com ~all"
+```
+
+`~all` (soft fail): unlisted servers are marked as suspicious without being rejected. Harden it to `-all` (hard fail) once you confirm that all your legitimate traffic goes out through listed servers.
+
+<Warning>
+  If you already have SPF for another provider (Mailgun, Sendgrid, Google Workspace), **merge** the `include:` entries into a single record; don't add another TXT. Multiple SPF records break verification.
+</Warning>
+
+## DKIM (DomainKeys Identified Mail)
+
+A cryptographic signature of the content, made with an RQE private key. Your domain publishes the public key in DNS via 3 CNAME records. When the email arrives, Gmail takes the signature from the header, downloads the public key from the CNAME, and validates it.
+
+```
+abc123._domainkey.yourdomain.com. CNAME abc123.dkim.amazonses.com.
+def456._domainkey.yourdomain.com. CNAME def456.dkim.amazonses.com.
+ghi789._domainkey.yourdomain.com. CNAME ghi789.dkim.amazonses.com.
+```
+
+The tokens (`abc123`, ...) are generated when you register your domain and come in the response from [`POST /domains/register`](/en/api-reference/domains#post-domainsregister).
+
+DKIM also makes your domain appear in the `signed-by:` of the header in Gmail web: a signal of legitimacy for the end user.
+
+## DMARC
+
+The policy on what to do if SPF or DKIM fail. It's the strongest of the 3 against spoofing.
+
+| Policy | What it does if SPF/DKIM fail | When to use |
+|---|---|---|
+| `p=none` | Only reports, doesn't reject | First implementation, while you analyze reports |
+| `p=quarantine` | Sends to spam | After 1–2 weeks of `none` with no issues |
+| `p=reject` | Rejects the email entirely | Stable production, maximum protection |
+
+Example:
+
+```
+_dmarc.yourdomain.com. TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@yourdomain.com; pct=100"
+```
+
+`pct=100` applies the policy to 100% of traffic. It's common to start with `pct=10` and increase gradually.
+
+<Info>
+  **DMARC reports**
+
+  With `rua=`, receiving servers send you daily reports on what % of your traffic passed SPF/DKIM. Useful for detecting spoofing or broken configurations. There are free services to parse them (Postmark, dmarcian).
+</Info>
+
+## MAIL FROM domain (custom)
+
+Without extra configuration, the `mailed-by:` that Gmail sees is `amazonses.com` — the provider's domain, not yours. That lowers SPF alignment from strict to relaxed.
+
+With a **Custom MAIL FROM domain** (in RQE, the `bounce.yourdomain.com` subdomain), the `mailed-by:` becomes your domain and SPF ends up strict.
+
+RQE configures it with a single CNAME record, included among the 7 that are generated when you register the domain:
+
+```
+bounce.yourdomain.com. CNAME feedback-smtp.us-east-1.amazonses.com.
+```
+
+<Info>
+  Custom MAIL FROM is not mandatory: `can_send` doesn't require it and emails arrive fine without it. But it improves SPF alignment, especially with strict clients like ProtonMail or enterprise Outlook. Recommended for large volumes.
+</Info>
+
+## The verification process in RQE
+
+<Steps>
+
+<Step title="Register the domain">
+
+`POST /domains/register` with `{ "domain": "yourdomain.com", "sender_name": "My Company", "sender_email": "noreply@yourdomain.com" }` (all three fields are required). RQE generates the 7 DNS records and returns them. See [Domains](/en/api-reference/domains).
+
+</Step>
+
+<Step title="Configure the 7 records">
+
+In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
+
+- 1 TXT domain verification
+- 3 CNAME DKIM
+- 1 TXT SPF (merge with existing if applicable)
+- 1 TXT DMARC
+- 1 CNAME Return-Path (Custom MAIL FROM)
+
+</Step>
+
+<Step title="Wait for propagation">
+
+5–10 minutes on Cloudflare/Route 53. Up to 48h on slow providers.
+
+</Step>
+
+<Step title="Verify">
+
+`POST /domains/:domain/verify` checks the domain verification, the 3 DKIM CNAMEs, and the MAIL FROM CNAME (SPF and DMARC are not validated automatically). With the domain and DKIM verified, the response includes `can_send: true` and you can send from `*@yourdomain.com`.
+
+</Step>
+
+</Steps>
+
+## Why emails land in spam (beyond auth)
+
+Even if the technical auth is OK, reputational factors weigh in:
+
+| Factor | Impact |
+|---|---|
+| New domain (< 30 days) | High — you need to warm it up |
+| Bounce rate > 2% | High — clean your list regularly |
+| Complaint rate > 0.1% | Critical — Gmail/Outlook degrade reputation fast |
+| No `List-Unsubscribe` header | High — RQE adds it automatically in campaigns and in `/v1/send-template-email`; for direct sends, pass it with `custom_headers` (`POST /send-email` and `/v1/send-batch`) |
+| Suspicious content | Medium — words like "FREE", "URGENT" in caps, bad HTML/text ratio |
+| Purchased lists | Critical — most are spam traps |
+
+<Warning>
+  **Warming**
+
+  If your domain is new or hasn't sent in > 60 days, do **gradual warming**: day 1 ~50k emails, day 2 ~75k, day 3+ the rest. [Batch mode](/en/api-reference/campaigns) automates it.
+</Warning>
+
+## Next steps
+
+- [Domains](/en/api-reference/domains) — endpoints to register and verify.
+- [Tracking](/en/concepts/tracking) — how open/click tracking works.
+- [FAQ — why do emails go to spam?](/en/guides/faq) — practical checklist.

@@ -12,41 +12,87 @@
     "library": "lucide"
   },
   "navigation": {
-    "pages": [
-      "index",
+    "languages": [
       {
-        "group": "Guías",
+        "language": "es",
         "pages": [
-          "guides/quickstart",
-          "guides/sdk-nodejs",
-          "guides/api-keys",
-          "guides/authentication",
-          "guides/templates",
-          "guides/scheduling",
-          "guides/attachments",
-          "guides/faq"
+          "index",
+          {
+            "group": "Guías",
+            "pages": [
+              "guides/quickstart",
+              "guides/sdk-nodejs",
+              "guides/api-keys",
+              "guides/authentication",
+              "guides/templates",
+              "guides/scheduling",
+              "guides/attachments",
+              "guides/faq"
+            ]
+          },
+          {
+            "group": "Conceptos",
+            "pages": [
+              "concepts/test-mode",
+              "concepts/webhook-environments",
+              "concepts/deliverability",
+              "concepts/tracking"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "api-reference/send-email",
+              "api-reference/public-api",
+              "api-reference/domains",
+              "api-reference/campaigns",
+              "api-reference/webhooks",
+              "api-reference/leads",
+              "api-reference/events",
+              "api-reference/activity"
+            ]
+          }
         ]
       },
       {
-        "group": "Conceptos",
+        "language": "en",
         "pages": [
-          "concepts/test-mode",
-          "concepts/webhook-environments",
-          "concepts/deliverability",
-          "concepts/tracking"
-        ]
-      },
-      {
-        "group": "API Reference",
-        "pages": [
-          "api-reference/send-email",
-          "api-reference/public-api",
-          "api-reference/domains",
-          "api-reference/campaigns",
-          "api-reference/webhooks",
-          "api-reference/leads",
-          "api-reference/events",
-          "api-reference/activity"
+          "en/index",
+          {
+            "group": "Guides",
+            "pages": [
+              "en/guides/quickstart",
+              "en/guides/sdk-nodejs",
+              "en/guides/api-keys",
+              "en/guides/authentication",
+              "en/guides/templates",
+              "en/guides/scheduling",
+              "en/guides/attachments",
+              "en/guides/faq"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "en/concepts/test-mode",
+              "en/concepts/webhook-environments",
+              "en/concepts/deliverability",
+              "en/concepts/tracking"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "en/api-reference/send-email",
+              "en/api-reference/public-api",
+              "en/api-reference/domains",
+              "en/api-reference/campaigns",
+              "en/api-reference/webhooks",
+              "en/api-reference/leads",
+              "en/api-reference/events",
+              "en/api-reference/activity"
+            ]
+          }
         ]
       }
     ]

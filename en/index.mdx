@@ -1,0 +1,80 @@
+---
+title: Introduction
+description: The email API for developers — transactional and bulk campaigns with a single HTTP call.
+---
+
+## Your first email
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "user@example.com",
+    "sender_email": "hello@yourdomain.com",
+    "subject": "Hello from ReallyQuickEmails",
+    "html_body": "<h1>Hello</h1><p>My first email with RQE.</p>"
+  }'
+```
+
+Successful response (`200`):
+
+```json
+{
+  "message": "Email sent successfully",
+  "email_id": "550e8400-e29b-41d4-a716-446655440000",
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+`email_id` identifies the send: use it to check its status in [Activity](/en/api-reference/activity) and to correlate the events that arrive at your [webhooks](/en/api-reference/webhooks). The `sender_email` must belong to a [verified domain](/en/api-reference/domains).
+
+<Info>
+  For development, use your `sk_test_*` key: the email is actually sent (you can test rendering and deliverability), but it's flagged with `is_test: true` and kept separate from your production metrics. Details in [Live and Test Modes](/en/concepts/test-mode).
+</Info>
+
+## The essentials
+
+| | |
+|---|---|
+| **Base URL** | `https://api.reallyquickemails.com` |
+| **Authentication** | `Authorization: Bearer <api_key>` header on all endpoints |
+| **Format** | JSON — `Content-Type: application/json` |
+| **API keys** | `sk_proj_*` and `sk_live_*` (production) · `sk_test_*` ([test mode](/en/concepts/test-mode)) |
+| **Official SDK** | [`@reallyquickemails/sdk`](/en/guides/sdk-nodejs) for Node.js / TypeScript |
+
+## For AI agents
+
+This documentation is optimized for consumption by LLMs:
+
+- [`/llms.txt`](/llms.txt) — index of all pages with their descriptions.
+- [`/llms-full.txt`](/llms-full.txt) — the entire documentation content in a single file.
+- Append the `.mdx` suffix to any page's URL to get its raw markdown — for example, [`/api-reference/public-api.mdx`](/api-reference/public-api.mdx). Clients that send `Accept: text/markdown` receive markdown directly.
+
+## Next steps
+
+<Columns cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/en/guides/quickstart">
+  From zero to your first email sent in under 5 minutes, with the Test key.
+</Card>
+  <Card title="Node.js SDK" icon="package" href="/en/guides/sdk-nodejs">
+  @reallyquickemails/sdk — emails, leads, automations, events, and senders with TypeScript types.
+</Card>
+  <Card title="API Keys (Live vs Test)" icon="key-round" href="/en/guides/api-keys">
+  sk_proj_ / sk_live_ / sk_test_ prefixes, idempotency, and dry run.
+</Card>
+  <Card title="Webhooks" icon="webhook" href="/en/api-reference/webhooks">
+  Delivery and inbound reply events, HMAC verification, and Live/Test routing.
+</Card>
+  <Card title="Templates and variables" icon="file-text" href="/en/guides/templates">
+  Variables, conditionals, loops, and helpers resolved at send time.
+</Card>
+  <Card title="Bulk sending" icon="layers" href="/en/api-reference/public-api">
+  POST /v1/send-batch — up to 10,000 recipients with per-recipient variables.
+</Card>
+  <Card title="Scheduling sends" icon="clock" href="/en/guides/scheduling">
+  scheduled_at with ISO 8601 or natural language in English and IANA time zones.
+</Card>
+</Columns>
+
+Questions? Write to us at [harold@dropout.cl](mailto:harold@dropout.cl) or check the [frequently asked questions](/en/guides/faq).

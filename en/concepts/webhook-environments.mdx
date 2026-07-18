@@ -1,0 +1,171 @@
+---
+title: Webhook environments
+description: "Route webhooks to custom environments (staging, qa, preview) with the environment field."
+---
+
+Configure **N webhook URLs** per project, one per custom environment (staging, qa, preview, etc.). You choose which one to fire with an optional `environment` field in the send body. Useful when the same Live key is used from multiple environments (same billing) and each one needs to receive its own webhooks.
+
+## Difference from Live/Test
+
+| Mechanism | How it's chosen | Affects `is_test` and metrics | Typical case |
+|---|---|---|---|
+| **[Live vs Test](/en/concepts/test-mode)** | Key prefix (`sk_live_*` vs `sk_test_*`) | Yes — sends are marked `is_test: true`, separate from live metrics | Devs testing real emails without polluting metrics |
+| **Custom environments** (this page) | `environment` field in the send body | **No** — it only changes the webhook URL; the key keeps sending | Same Live key from the customer's staging and production |
+
+The two coexist: `sk_test_*` for local QA **and** custom environments for the customer's intermediate environments.
+
+## Configuration
+
+<Steps>
+
+<Step title="Define the environments">
+
+Dashboard → your project → **Settings → Integrations → Webhook Environments**. You add `name + URL` pairs:
+
+```text
+webhook_environments (outbound)/
+├─ staging       — https://staging.yourapp.com/webhooks/email
+├─ qa            — https://qa.yourapp.com/webhooks/email
+└─ preview-pr-42 — https://pr-42.preview.yourapp.com/webhooks/email
+
+inbound_webhook_environments (replies)/
+├─ staging       — https://staging.yourapp.com/webhooks/inbound
+└─ qa            — https://qa.yourapp.com/webhooks/inbound
+```
+
+The keys (`staging`, `qa`, `preview-pr-42`) are arbitrary, with no reserved names. Constraint: `[a-zA-Z0-9_.-]` up to 64 chars.
+
+</Step>
+
+<Step title="Send the request with `environment`">
+
+<Tabs>
+
+<Tab title="curl">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "user@example.com",
+    "sender_email": "noreply@yourdomain.com",
+    "subject": "Confirmation",
+    "html_body": "<p>Hello</p>",
+    "environment": "staging"
+  }'
+```
+
+</Tab>
+
+<Tab title="JavaScript">
+
+```javascript
+await fetch('https://api.reallyquickemails.com/v1/send-email', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.RQE_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    recipient_email: 'user@example.com',
+    sender_email: 'noreply@yourdomain.com',
+    subject: 'Confirmation',
+    html_body: '<p>Hello</p>',
+    environment: 'staging',
+  }),
+});
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import os, requests
+
+requests.post(
+    'https://api.reallyquickemails.com/v1/send-email',
+    headers={'Authorization': f"Bearer {os.environ['RQE_API_KEY']}"},
+    json={
+        'recipient_email': 'user@example.com',
+        'sender_email': 'noreply@yourdomain.com',
+        'subject': 'Confirmation',
+        'html_body': '<p>Hello</p>',
+        'environment': 'staging',
+    },
+)
+```
+
+</Tab>
+
+</Tabs>
+
+</Step>
+
+<Step title="Receive the webhook with echo">
+
+The payload that reaches the `staging` endpoint includes an `environment` echo. You don't need to parse URLs to tell them apart:
+
+```json
+{
+  "event": "email.delivery",
+  "environment": "staging",
+  "is_test": false,
+  "timestamp": "2026-04-29T15:30:42.123Z",
+  "project_id": "...",
+  "data": {
+    "activity_id": "...",
+    "message_id": "...",
+    "recipient": "user@example.com",
+    "event_type": "delivery",
+    "event_timestamp": "2026-04-29T15:30:42.000Z"
+  }
+}
+```
+
+Same model for inbound replies — the `email.inbound` payload also includes `environment`.
+
+</Step>
+
+</Steps>
+
+## Behavior
+
+<Info>
+  **Exclusive override, not additive**
+
+  With `environment` configured, the webhook goes **only** to that URL. If the `environment` doesn't exist in `webhook_environments`, RQE responds with **400 `ENVIRONMENT_NOT_CONFIGURED`** — no silent fallback to the default `webhook_url`. Configuration errors are visible from the very first send.
+</Info>
+
+| Case | Routing |
+|---|---|
+| Body with `environment: "staging"` and `webhook_environments.staging` exists | → only to `webhook_environments.staging` |
+| Body with `environment: "staging"` but it's not in `webhook_environments` | → **400 error**, the send is not queued |
+| Body without `environment` and key is `sk_live_*` | → `webhook_url` (live) |
+| Body without `environment` and key is `sk_test_*` | → `webhook_url_dev` (test) |
+| Body with `environment` and key is `sk_test_*` | → only to `webhook_environments[env]` (override wins) |
+
+## Idempotency with `environment`
+
+`Idempotency-Key` works by `(projectId, key)` and **does not include `environment`** in the scope. If you retry with a different `environment` and the same `Idempotency-Key` within 24h, you get the cached result of the first request, with the original `environment`. To distinguish sends by environment, use a different `Idempotency-Key`.
+
+## When to use it
+
+**Good fit:**
+
+- Same customer app with several environments (prod, staging, qa) that share billing and metrics but want separate callbacks.
+- Preview deployments with ephemeral URLs (`preview-pr-N`).
+- Multi-tenant SaaS that wants to identify traffic by sub-customer without separating RQE projects.
+
+**Not the tool for:**
+
+- Separating dev/prod metrics and activity — use [Test mode](/en/concepts/test-mode) (`sk_test_*`).
+- Isolating the suppression list — suppression is per project, shared across all environments.
+- Fully replicating a multi-customer setup — for that, create separate RQE projects.
+
+## Next steps
+
+- [Webhooks (reference)](/en/api-reference/webhooks) — full payload format, HMAC verification, retry logic.
+- [Test mode](/en/concepts/test-mode) — differences with `sk_test_*`.
+- [Send email](/en/api-reference/send-email) — full request body.

@@ -1,0 +1,263 @@
+---
+title: Campaigns
+description: "Create and send bulk email campaigns with per-recipient variables."
+---
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+---
+
+## How to send bulk emails
+
+There are two ways to send bulk emails:
+
+| Method | Best for | Limit per request |
+|---|---|---|
+| **API: `POST /v1/send-batch`** | Programmatic integrations, sends from your backend | 10,000 recipients |
+| **API: `POST /v1/campaigns` or Dashboard** | Large sends with segments, batches, and warming | Up to 10,000,000 recipients (automatic batch processing) |
+
+Learn more in [`POST /v1/send-batch`](/en/api-reference/public-api#post-v1send-batch).
+
+---
+
+## POST /v1/campaigns
+
+Creates a bulk sending campaign.
+
+### Body parameters
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Campaign name. |
+| `templateId` | string | Yes | ID (UUID) of the template to send. |
+| `senderProfileId` | string | Yes | Sender profile ID (verified domain). |
+| `recipientIds` | string[] | Conditional | Recipient IDs. Required when `selectAllRecipients` is `false`. |
+| `selectAllRecipients` | boolean | No | Send to all recipients in the project. Default: `false`. |
+| `recipientCount` | number | Conditional | Total recipients. Required when `selectAllRecipients` is `true`. |
+| `recipientFilter` | object | No | Recipient filter (only with `selectAllRecipients: true`). |
+| `subject` | string | No | Campaign subject. If omitted, the template's subject is used. |
+| `previewText` | string | No | Preview text (preheader). |
+| `templateInternalId` | string \| number | No | Numeric internal template ID (alternative to the UUID). |
+| `scheduledFor` | string | No | ISO timestamp to schedule the send. |
+| `scheduleType` | string | No | Schedule type. Default: `scheduled`. With `delay`, requires `delayAmount` and `delayUnit`. |
+| `delayAmount` | number | No | Delay amount (only with `scheduleType: "delay"`). |
+| `delayUnit` | string | No | Delay unit (only with `scheduleType: "delay"`). |
+| `batchMode` | boolean | No | Enables batched sending. Default: `false`. |
+| `batchSize` | number | No | Recipients per batch (with `batchMode: true`). |
+| `batchIntervalHours` | number | No | Hours between batches. Default: `24`. |
+| `sendOverHours` | number | No | Distributes the send evenly over N hours. |
+| `variableConfig` | object | No | `{ "defaults": {...}, "mappings": {...} }` — default values and mapping of recipient fields to template variables. |
+| `confirmDuplicate` | boolean | No | Skips duplicate campaign detection (see `409` response). |
+
+### Request example
+
+Requires a Bearer token (`Authorization: Bearer sk_proj_...`). Learn more in [Authentication](/en/api-reference/public-api#authentication).
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/campaigns \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "June Newsletter",
+    "templateId": "9f1c2b34-5678-4abc-9def-012345678901",
+    "senderProfileId": "1a2b3c4d-5678-4abc-9def-012345678901",
+    "recipientIds": ["c0ffee00-1111-4222-8333-444455556666"],
+    "subject": "June updates",
+    "batchMode": true,
+    "batchSize": 5000,
+    "batchIntervalHours": 24
+  }'
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "campaign": {
+    "id": "7e8d9c0b-1234-4abc-9def-012345678901",
+    "name": "June Newsletter",
+    "status": "initializing",
+    "subject": "June updates",
+    "template_id": "9f1c2b34-5678-4abc-9def-012345678901",
+    "sender_profile_id": "1a2b3c4d-5678-4abc-9def-012345678901",
+    "total_recipients": 1,
+    "batch_mode": true,
+    "batch_size": 5000,
+    "batch_interval_hours": 24,
+    "total_batches": 1,
+    "current_batch": 0,
+    "utm_campaign": "rqe_7e8d9c0b12344abc9def012345678901"
+  }
+}
+```
+
+The campaign is returned immediately in `initializing` status. The recipient records are created in the background (2-30 seconds depending on audience size) and the campaign moves to `pending`. Sending starts automatically.
+
+The `campaign` object includes the full row (also `created_at`, `next_batch_at`, `select_all_recipients`, `send_over_hours`, `variable_config`, `scheduled_for`, etc.).
+
+Learn more in [Campaign statuses](#campaign-statuses).
+
+### Duplicate detection (409)
+
+To prevent duplicate sends, the API responds `409` in two cases:
+
+- `subject_match_60min` — a campaign with the same subject was already created in the last 60 minutes.
+- `name_template_24h` — a campaign with the same name and template already exists in the last 24 hours in a non-completed state (`pending`, `paused`, `processing`, `initializing`).
+
+```json
+{
+  "warning": "duplicate_campaign",
+  "reason": "subject_match_60min",
+  "message": "A campaign \"June Newsletter\" with the same subject was already sent 12 minutes ago",
+  "existingCampaignId": "7e8d9c0b-1234-4abc-9def-012345678901",
+  "existingCampaignStatus": "processing"
+}
+```
+
+To create the campaign anyway, resend the request with `"confirmDuplicate": true`.
+
+### Error codes
+
+| Code | Error |
+|---|---|
+| `400` | `Missing required fields: name, templateId, senderProfileId` |
+| `400` | `recipientIds is required when selectAllRecipients is false` |
+| `400` | `recipientCount is required when selectAllRecipients is true` |
+| `400` | `scheduledFor must be a string (ISO timestamp)` |
+| `401` | Invalid or missing API key. |
+| `409` | `duplicate_campaign` (see above). |
+| `500` | `Failed to create campaign` |
+
+---
+
+## Campaigns from the Dashboard
+
+The Dashboard offers a 5-step wizard to create and send campaigns without code.
+
+### Full flow
+
+```
+1. Create template    2. Create campaign     3. Sent automatically
+   (Visual editor)       (5-step wizard)        (Background processing)
+        |                      |                       |
+   Visual editor        Recipients,              Automatic batches,
+   with variables       template, sender,        rate limiting,
+   {{name}}             variables, schedule      retries
+```
+
+### Step 1: Create a template
+
+From **Templates → New Template**, design your email in the visual editor. Templates support dynamic variables with Handlebars syntax:
+
+```html
+<h1>Hi {{nombre}}!</h1>
+<p>Your discount code is: {{codigo}}</p>
+<p>{{default producto "our catalog"}}</p>
+```
+
+**Variable syntax:**
+
+| Syntax | Description |
+|---|---|
+| `{{variable}}` | Basic substitution |
+| `{{default variable "fallback"}}` | Default value if the variable does not exist |
+| `{{#each items}}...{{/each}}` | Loop over arrays |
+
+**Available helpers:**
+
+| Helper | Description |
+|---|---|
+| `{{formatCurrency price "USD"}}` | Formats a number as currency. |
+| `{{formatDate date "long"}}` | Formats a date (`short` by default). |
+| `{{multiply quantity price}}` | Multiplies two numbers (2 decimals). |
+| `{{capitalize text}}` / `{{uppercase text}}` / `{{lowercase text}}` | Text transformation. |
+
+**Built-in variables:** each recipient automatically receives `{{name}}`, `{{email}}`, and `{{unsubscribe_url}}`, plus the contact's fields. Top-level keys also work in lowercase: if your data brings `NOMBRE`, the template can use `{{nombre}}`. If the template does not include `{{unsubscribe_url}}`, an unsubscribe footer is added automatically and the emails include `List-Unsubscribe` headers.
+
+### Step 2: Create the campaign
+
+From **Campaigns → New Campaign**, the wizard guides you through 5 steps:
+
+1. **Recipients** — Select manually, use "Select all", or filter by segment.
+2. **Template and Sender** — Choose the created template and the sender profile (verified domain).
+3. **Variables** (optional) — Configure default values, map recipient fields to template variables, or upload a CSV with custom per-email values.
+4. **Send configuration** — Enable batch mode, define batch size and interval, or distribute the send over N hours.
+5. **Review and Send** — Confirm everything and launch the campaign.
+
+### Step 3: Automatic processing
+
+Once the campaign is created:
+
+1. The recipient records are created (status: `pending`)
+2. The campaign moves from `initializing` to `pending`
+3. Recipients are processed asynchronously in the background: each one's variables are prepared, they are queued for sending, and they move to `queued` status
+4. Each email is rendered with Handlebars, sent through our sending infrastructure, and moves to `sent` status
+5. Delivery/bounce/complaint events update the final status and trigger your webhooks
+
+Learn more in [Webhooks](/en/api-reference/webhooks).
+
+### Advanced configuration
+
+#### Batch mode
+
+Split the send into batches with intervals using `batchMode`, `batchSize`, and `batchIntervalHours`. Useful for domain warming or to avoid overwhelming your recipients.
+
+**Example:** 50,000 recipients with batches of 10,000 every 24 hours = 5 days of gradual sending.
+
+Learn more in [`POST /v1/campaigns`](#post-v1campaigns).
+
+#### Hourly distribution
+
+Distribute the send evenly over a period with `sendOverHours`.
+
+**Example:** 3,000 emails distributed over 6 hours = ~500 emails per hour.
+
+#### Per-recipient variables (CSV)
+
+Personalize each email by uploading a CSV with columns:
+
+```csv
+email,nombre,codigo_descuento,producto
+juan@example.com,Juan,JUAN20,Pro Plan
+maria@example.com,Maria,MARIA15,Business Plan
+```
+
+CSV variables take priority over the default values.
+
+---
+
+## Domain warming
+
+For large sends (>50,000 emails) from a new domain or one with little history, send gradually:
+
+| Day | Suggested volume |
+|---|---|
+| Day 1 | ~50,000 |
+| Day 2 | ~75,000 |
+| Day 3+ | Remainder |
+
+Use **batch mode** to automate this. Sending everything at once from a cold domain can flag you as spam on Gmail, Outlook, and other providers.
+
+Learn more in [Deliverability and authentication](/en/concepts/deliverability).
+
+---
+
+## Campaign statuses
+
+| Status | Description |
+|---|---|
+| `initializing` | Creating recipient records (transient, typically 2-30 seconds) |
+| `pending` | Ready to be processed |
+| `processing` | Actively sending batches |
+| `paused` | Manually paused by the user |
+| `rate_limited` | Automatically paused by rate limit |
+| `completed` | All emails were processed |
+| `failed` | The campaign ended with errors |
+| `cancelled` | Cancelled by the user |

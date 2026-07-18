@@ -1,0 +1,606 @@
+---
+title: Leads
+description: "Manage leads, segments, tags, and attributes via API."
+---
+
+Manage your project's leads (contacts) via API: CRUD, segments, tags, and attributes.
+
+## Authentication
+
+All requests require a Bearer token:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Learn more in [Public API v1](/en/api-reference/public-api#authentication).
+
+---
+
+## Endpoints
+
+### POST /v1/leads
+
+Creates or updates one or more leads. If the email already exists, it is updated (upsert).
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| email | string | Yes (if no `leads`) | Lead's email |
+| data | object | No | Custom attributes (name, phone, etc.) |
+| segment_ids | string[] | No | UUIDs of segments to assign |
+| leads | array | Yes (if no `email`) | Array of leads for bulk (maximum 1,000) |
+
+If an email is repeated in a bulk request, it is deduplicated and the last occurrence wins.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+# Individual
+curl -X POST https://api.reallyquickemails.com/v1/leads \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@acme.com",
+    "data": { "name": "Jane", "phone": "+1234567890" },
+    "segment_ids": ["uuid-segment-1"]
+  }'
+
+# Bulk (up to 1,000)
+curl -X POST https://api.reallyquickemails.com/v1/leads \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "leads": [
+      { "email": "jane@acme.com", "data": { "name": "Jane" } },
+      { "email": "mike@store.co", "data": { "name": "Mike" }, "segment_ids": ["uuid"] }
+    ]
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+// Individual
+await rqe.leads.upsert({
+  email: 'jane@acme.com',
+  data: { name: 'Jane', phone: '+1234567890' },
+  segment_ids: ['uuid-segment-1'],
+});
+
+// Bulk (up to 1,000)
+await rqe.leads.upsertMany({
+  leads: [
+    { email: 'jane@acme.com', data: { name: 'Jane' } },
+    { email: 'mike@store.co', data: { name: 'Mike' }, segment_ids: ['uuid'] },
+  ],
+});
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "success": true,
+  "total": 2,
+  "leads": [
+    { "id": "uuid", "email": "jane@acme.com", "created": true },
+    { "id": "uuid", "email": "mike@store.co", "created": false }
+  ]
+}
+```
+
+`created: true` = new lead. `created: false` = existing lead updated.
+
+If a `segment_id` does not exist, the leads are still created and the response includes a `warnings` field (array of strings) with the segments that were not found.
+
+---
+
+### GET /v1/leads
+
+Lists leads with pagination, ordered by creation date descending.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| page | number | 1 | Page |
+| per_page | number | 50 | Results per page (max. 200) |
+| search | string | — | Search by email or name |
+| segment_id | UUID | — | Filter by segment |
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/v1/leads?page=1&per_page=50" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.list({ page: 1, per_page: 50 });
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    { "id": "uuid", "email": "jane@acme.com", "data": { "name": "Jane" }, "created_at": "...", "updated_at": "..." }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 1234,
+    "total_pages": 25
+  }
+}
+```
+
+---
+
+### GET /v1/leads/:id
+
+Get a lead by ID (UUID), including its segments.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/leads/lead-uuid \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.get('lead-uuid');
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "lead": {
+    "id": "uuid",
+    "email": "jane@acme.com",
+    "data": { "name": "Jane" },
+    "created_at": "...",
+    "updated_at": "...",
+    "shopify_customer_id": null,
+    "segment_ids": ["uuid-1", "uuid-2"]
+  }
+}
+```
+
+`shopify_customer_id` is the customer's ID in Shopify if the lead comes from the Shopify sync; `null` otherwise.
+
+---
+
+### PUT /v1/leads/:id
+
+Updates a lead. At least one of `email`, `data`, or `segment_ids` is required.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| email | string | No* | New email for the lead |
+| data | object | No* | **Replaces** the entire attributes object (no merge) |
+| segment_ids | string[] | No* | **Replaces** all existing memberships. Segment IDs that do not exist in the project are ignored |
+
+\*At least one of the three is required. For partial attribute merging, see [Attributes](#attributes).
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X PUT https://api.reallyquickemails.com/v1/leads/lead-uuid \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "new@acme.com",
+    "data": { "name": "Jane Updated", "plan": "pro" },
+    "segment_ids": ["uuid-1"]
+  }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.update('lead-uuid', {
+  email: 'new@acme.com',
+  data: { name: 'Jane Updated', plan: 'pro' },
+  segment_ids: ['uuid-1'],
+});
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "lead": {
+    "id": "uuid",
+    "email": "new@acme.com",
+    "data": { "name": "Jane Updated", "plan": "pro" },
+    "created_at": "...",
+    "updated_at": "...",
+    "segment_ids": ["uuid-1"]
+  }
+}
+```
+
+**Errors:** if the new `email` already exists on another lead in the project, it responds `409`.
+
+---
+
+### DELETE /v1/leads/:id
+
+Deletes a lead and its segment memberships.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/leads/lead-uuid \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.delete('lead-uuid');
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true }
+```
+
+---
+
+## Segments
+
+### POST /v1/leads/:id/segments
+
+Adds a lead to one or more segments.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| segment_ids | string[] | Yes | UUIDs of the segments to add |
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/leads/lead-uuid/segments \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "segment_ids": ["uuid-1", "uuid-2"] }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true, "added": 2 }
+```
+
+**Errors:** if any segment does not exist in the project, it responds `404` and adds none.
+
+---
+
+### DELETE /v1/leads/:id/segments/:segmentId
+
+Removes a lead from a segment.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/leads/lead-uuid/segments/segment-uuid \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true }
+```
+
+**Errors:** if the lead does not belong to the segment, it responds `404`.
+
+---
+
+## Tags
+
+Tags are text labels. They are stored as an array under the reserved key `_tags` within the lead's attributes (`data`). The `:email` in the path must be URL-encoded (for example, `jane%40acme.com`).
+
+### POST /v1/leads/:email/tags
+
+Adds tags to a lead; they are merged with the existing ones, without duplicates.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| tags | string[] | Yes | Tags to add |
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/leads/jane%40acme.com/tags \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "tags": ["vip", "spanish_speaker", "hot_lead"] }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.addTags('jane@acme.com', ['vip', 'spanish_speaker', 'hot_lead']);
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true, "tags": ["vip", "spanish_speaker", "hot_lead"] }
+```
+
+---
+
+### DELETE /v1/leads/:email/tags
+
+Removes tags from a lead.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| tags | string[] | Yes | Tags to remove |
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/leads/jane%40acme.com/tags \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "tags": ["hot_lead"] }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.removeTags('jane@acme.com', ['hot_lead']);
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true, "tags": ["vip", "spanish_speaker"] }
+```
+
+---
+
+### GET /v1/leads/:email/tags
+
+Lists a lead's tags.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/leads/jane%40acme.com/tags \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.getTags('jane@acme.com');
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true, "tags": ["vip", "spanish_speaker"] }
+```
+
+---
+
+## Attributes
+
+Custom attributes in the lead's `data` field. They are merged (shallow) with the existing ones; the reserved key `_tags` is preserved. The `:email` in the path must be URL-encoded.
+
+### POST /v1/leads/:email/attributes
+
+Sets custom attributes on a lead. The body is a flat JSON object.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/leads/jane%40acme.com/attributes \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "plan": "pro", "mrr": 49, "team_size": 12 }'
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.setAttributes('jane@acme.com', { plan: 'pro', mrr: 49, team_size: 12 });
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true, "data": { "plan": "pro", "mrr": 49, "team_size": 12, "name": "Jane" } }
+```
+
+---
+
+### GET /v1/leads/:email/attributes
+
+Returns the lead's attributes, excluding the reserved key `_tags`.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/leads/jane%40acme.com/attributes \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+<Tab title="Node.js">
+
+```ts
+import { RQE } from '@reallyquickemails/sdk';
+
+const rqe = new RQE({ apiKey: process.env.RQE_API_KEY });
+
+await rqe.leads.getAttributes('jane@acme.com');
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "success": true, "data": { "plan": "pro", "mrr": 49, "team_size": 12, "name": "Jane" } }
+```
+
+---
+
+## Errors
+
+| Code | Meaning |
+|---|---|
+| 400 | Validation failed (required field, invalid format, ID is not a UUID) |
+| 401 | Invalid or missing API key |
+| 404 | Lead or segment not found |
+| 409 | Email already exists on another lead in the project |
+| 500 | Internal error |
+
+Error format:
+
+```json
+{ "error": "Error description" }
+```
+
+`500` errors may include a `details` field with the error detail.
+
+See the [Node.js SDK](/en/guides/sdk-nodejs) guide.

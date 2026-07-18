@@ -1,0 +1,94 @@
+---
+title: Event tracking
+description: "How events, open and click tracking, and suppressions work."
+---
+
+For each email you send, RQE fires a webhook with events as they happen. Some come from the sending provider (delivery, bounce); others are detected by RQE directly (open, click).
+
+## Available events
+
+| Webhook event | When it fires | Reliability |
+|---|---|---|
+| `email.send` | RQE accepted the send and dispatched it | 100% |
+| `email.delivery` | The recipient's server accepted the email | ~99% |
+| `email.bounce` | Email bounced (hard or soft) | 100% |
+| `email.complaint` | Recipient marked as spam | 100% |
+| `email.deliverydelay` | Delivery temporarily delayed | 100% |
+| `email.open` | Recipient opened the email | ~70% |
+| `email.click` | Recipient clicked a link | ~99% |
+| `email.inbound` | Recipient replied to your email (API sends only) | 100% |
+
+There's also `email.reject` (send rejected before going out). The details of each event and its fields are in the [Webhooks reference](/en/api-reference/webhooks#events).
+
+## Bounces — soft vs hard
+
+| Type | Description | RQE's action |
+|---|---|---|
+| **Hard bounce** | Address doesn't exist (`550 5.1.1`) | Adds the recipient to the suppression list — the next sends are skipped automatically |
+| **Soft bounce** | Mailbox full, server temporarily down | Marks the event, doesn't add to suppression. You can send again |
+
+Complaints (`email.complaint`) also add the recipient to the suppression list automatically.
+
+<Warning>
+  Above **2%** bounces, your deliverability degrades. Above **5%**, the provider may suspend your sending. Clean your list: an old email is a bounce waiting to happen.
+</Warning>
+
+## Open tracking
+
+RQE injects a transparent 1x1 pixel into the HTML. When the recipient's client loads images, it fires `email.open`.
+
+### Why reliability is ~70%
+
+- **Outlook desktop** blocks external images by default → no open detected
+- **Apple Mail iOS 15+** with MPP (Mail Privacy Protection) loads the pixel automatically on receipt → reports an open before the user actually opens
+- **Plain-text clients** → don't load images
+
+<Info>
+  **Treat opens as approximate**
+
+  Opens are a trend signal (does this send get opened by more people than that one?), not exact individual behavior. For real conversion, look at clicks.
+</Info>
+
+## Click tracking
+
+Before sending, RQE rewrites the `<a href>` tags in the HTML so they pass through a tracking endpoint that does a 302 redirect to the original destination. The redirect is instant, the user doesn't notice anything. It only fails if they copy/paste the href manually (extremely rare).
+
+## Webhook payload
+
+Your `webhook_url` receives a POST with an HMAC-SHA256 signature in the `X-RQE-Signature` header, signed with your project's API key. Example body for `email.delivery`:
+
+```json
+{
+  "event": "email.delivery",
+  "is_test": false,
+  "timestamp": "2026-04-29T15:30:42.123Z",
+  "project_id": "...",
+  "data": {
+    "activity_id": "...",
+    "message_id": "...",
+    "recipient": "user@example.com",
+    "event_type": "delivery",
+    "event_timestamp": "2026-04-29T15:30:42.000Z"
+  }
+}
+```
+
+For the full shape by event type, see [Webhooks → Outbound payload](/en/api-reference/webhooks#outbound-payload).
+
+### HMAC verification in Node
+
+```javascript
+const crypto = require('crypto');
+const expected = 'sha256=' + crypto
+  .createHmac('sha256', apiKey)
+  .update(rawBody)
+  .digest('hex');
+if (req.headers['x-rqe-signature'] !== expected) {
+  return res.status(401).send('Invalid signature');
+}
+```
+
+## Next steps
+
+- [Webhooks](/en/api-reference/webhooks) — full reference with all formats.
+- [Test mode](/en/concepts/test-mode) — separate dev vs prod tracking.

@@ -1,0 +1,258 @@
+---
+title: Activity
+description: "Check the status of your sends: deliveries, opens, clicks, bounces, and complaints."
+---
+
+Check the status of sent emails — deliveries, opens, clicks, bounces, and complaints — by ID or with filters.
+
+## Authentication
+
+Include your project API key in every request:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Without a valid API key, the response is `401` with `{ "error": "..." }`.
+
+Learn more in [Public API](public-api#authentication).
+
+---
+
+## Endpoints
+
+### GET /v1/activity/:id
+
+Get the details of a specific send by its ID.
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` (path) | uuid | Yes | Send ID. You receive it as `activity_id` in the `email.*` webhooks, or as `email_id` in the response of [POST /v1/send-email](send-email) |
+| `include` (query) | string | No | `events`, `html`, or `events,html` — includes the full event timeline and/or the rendered HTML of the email |
+
+**Request:**
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/activity/e5522dde-33c7-4644-bf0a-28ec73830616 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e5522dde-33c7-4644-bf0a-28ec73830616",
+    "created_at": "2026-04-17T16:40:20.623Z",
+    "email_type": "automation",
+    "campaign_id": null,
+    "automation_run_id": "e42c853c-2e28-40cc-aad8-5de7d5395ede",
+    "template_id": "bb164399-3ac3-475f-9acb-dc049a20d0d3",
+    "message_id": "0100019d9c5098e5-888cac99-cd05-4882-9442-d293c98631fc-000000",
+    "subject": "Test",
+    "sender_email": "antonia@capitaria.com",
+    "sender_name": "Antonia",
+    "recipient_primary": "harold@dropout.cl",
+    "current_status": "delivered",
+    "delivered_at": "2026-04-17T16:40:21.813Z",
+    "bounced_at": null,
+    "complained_at": null,
+    "opened_first_at": "2026-04-17T16:41:55.099Z",
+    "clicked_first_at": "2026-04-17T17:30:17.645Z"
+  }
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | uuid | `activity_id` — use it for subsequent calls |
+| `current_status` | string | Current status: `queued`, `retrying`, `sent`, `delivered`, `bounced`, `complained`, `failed`, `suppressed` |
+| `delivered_at` | ISO8601 \| null | Confirmed delivery timestamp |
+| `opened_first_at` | ISO8601 \| null | First open (there may be several, see `?include=events`) |
+| `clicked_first_at` | ISO8601 \| null | First click (same) |
+| `bounced_at` | ISO8601 \| null | Bounce timestamp (hard or soft) |
+| `complained_at` | ISO8601 \| null | Timestamp when the recipient marked it as spam |
+| `message_id` | string | Message identifier assigned by the sending infrastructure — useful for correlating events |
+
+Possible `current_status` values:
+
+| Status | Meaning |
+|---|---|
+| `queued` | Accepted, in the send queue |
+| `retrying` | Retrying after a temporary failure |
+| `sent` | Sent to the recipient's server |
+| `delivered` | Delivery confirmed |
+| `bounced` | Bounced (hard or soft) |
+| `complained` | The recipient marked it as spam |
+| `failed` | Permanently failed |
+| `suppressed` | Blocked by the project's suppression list |
+
+**With `?include=events`** — adds an `events` array with the full timeline, ordered by `event_timestamp` ascending:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "e5522dde-33c7-4644-bf0a-28ec73830616",
+    "current_status": "delivered",
+    "events": [
+      {
+        "id": "0c0ffe2e-1111-2222-3333-444455556666",
+        "event_type": "delivered",
+        "event_timestamp": "2026-04-17T16:40:21.813Z",
+        "user_agent": null,
+        "ip_address": null,
+        "url_clicked": null,
+        "bounce_type": null,
+        "bounce_subtype": null,
+        "complaint_feedback_type": null,
+        "created_at": "2026-04-17T16:40:22.000Z"
+      },
+      {
+        "id": "1d1aabbc-1111-2222-3333-444455556666",
+        "event_type": "open",
+        "event_timestamp": "2026-04-17T16:41:55.099Z",
+        "user_agent": "Mozilla/5.0 ...",
+        "ip_address": "66.249.84.135",
+        "url_clicked": null,
+        "bounce_type": null,
+        "bounce_subtype": null,
+        "complaint_feedback_type": null,
+        "created_at": "2026-04-17T16:42:00.000Z"
+      },
+      {
+        "id": "2e2bbccd-1111-2222-3333-444455556666",
+        "event_type": "click",
+        "event_timestamp": "2026-04-17T17:30:17.645Z",
+        "user_agent": "Mozilla/5.0 ...",
+        "ip_address": "190.0.0.1",
+        "url_clicked": "https://landing.capitaria.com/masterclass",
+        "bounce_type": null,
+        "bounce_subtype": null,
+        "complaint_feedback_type": null,
+        "created_at": "2026-04-17T17:30:20.000Z"
+      }
+    ]
+  }
+}
+```
+
+`event_type` can be: `sent`, `delivered`, `bounce`, `complaint`, `reject`, `open`, `click`, `rendering_failure`, `delivery_delay`.
+
+**With `?include=html`** — adds the `html_content` field with the full rendered HTML of the email (it can be large, only request it when needed).
+
+**Errors:**
+
+| Code | Cause |
+|---|---|
+| 401 | Invalid or missing API key |
+| 404 | `activity_id` does not exist or does not belong to the project |
+| 500 | Internal error |
+
+Error responses have the form `{ "error": "message" }`.
+
+---
+
+### GET /v1/activity
+
+Lists sends with filters to obtain historical datasets and analyze delivery patterns.
+
+**Parameters (query):**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `email` | string | No | Filter by `recipient_primary` (normalized to lowercase) |
+| `status` | string | No | Filter by `current_status`: `queued`, `retrying`, `sent`, `delivered`, `bounced`, `complained`, `failed`, `suppressed` |
+| `automation_run_id` | uuid | No | All emails generated by a specific enrollment |
+| `campaign_id` | uuid | No | All emails sent as part of a campaign |
+| `since` | ISO8601 | No | `created_at >= since` |
+| `until` | ISO8601 | No | `created_at <= until` |
+| `page` | int | No | Default 1 |
+| `per_page` | int | No | Default 50, max 200 |
+
+**Typical case with `automation_run_id`:** save the `automation_run_id` returned by `POST /v1/automations/:id/enroll`. Once the flow has sent N emails, retrieve them all by filtering on that ID.
+
+**Request:**
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/v1/activity?email=jane@acme.com&status=delivered&since=2026-04-01" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+Filter by `automation_run_id`:
+
+```bash
+curl "https://api.reallyquickemails.com/v1/activity?automation_run_id=e42c853c-2e28-40cc-aad8-5de7d5395ede" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "e5522dde-33c7-4644-bf0a-28ec73830616",
+      "subject": "Welcome",
+      "recipient_primary": "jane@acme.com",
+      "current_status": "delivered"
+    },
+    {
+      "id": "f6633eef-44d8-5755-c01b-39fd84941727",
+      "subject": "Reminder",
+      "recipient_primary": "jane@acme.com",
+      "current_status": "sent"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 1423,
+    "total_pages": 29
+  }
+}
+```
+
+Each element of `data` includes the same base fields as `GET /v1/activity/:id` (abbreviated here). Ordered by `created_at DESC` (most recent first).
+
+**Errors:**
+
+| Code | Cause |
+|---|---|
+| 401 | Invalid or missing API key |
+| 500 | Internal error |
+
+Error responses have the form `{ "error": "message" }`.
+
+---
+
+## Pull vs Webhook
+
+- **Pull** (this endpoint): query whenever you need. Simple to integrate, but with latency — opens and clicks are processed in the background and may take a few seconds (~5s) to appear in `opened_first_at` / `clicked_first_at` and in the event timeline.
+- **Webhook**: real-time push events. Better for reactive triggers.
+
+To analyze delivery patterns in batch, use pull. For real-time reactive automations, use webhooks.
+
+Learn more in [Webhooks](webhooks).
+
+## Rate limits
+
+- Max 200 results per page in `GET /v1/activity` (`per_page` greater than 200 is clamped to 200).

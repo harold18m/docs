@@ -1,0 +1,153 @@
+---
+title: Quickstart
+description: "From zero to your first email in under 5 minutes, with the Test key."
+---
+
+From zero to your first email in under 5 minutes. You'll use the **Test key**: it sends real emails, flagged as test so they don't pollute your production metrics.
+
+<Info>
+  If you don't have an account yet, sign up at [app.reallyquickemails.com](https://app.reallyquickemails.com). You need a verified domain to send; see the [domains guide](/en/api-reference/domains).
+</Info>
+
+<Steps>
+
+<Step title="Get your Test API Key">
+
+1. Log in to the [dashboard](https://app.reallyquickemails.com).
+2. Select your project.
+3. In the side menu, open **Integrations → API Keys**.
+4. Copy the **Test key** (`sk_test_*`). If you later need production traffic, repeat with the **Live key** (`sk_live_*` or `sk_proj_*`).
+
+Store it as an environment variable:
+
+```bash
+export RQE_API_KEY="sk_test_your_test_key"
+```
+
+<Warning>
+  Don't hardcode keys in client-side code. Use them only from the backend.
+</Warning>
+
+</Step>
+
+<Step title="Send your first email">
+
+Use `POST /v1/send-email` with raw HTML:
+
+<Tabs>
+
+<Tab title="curl">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-email \
+  -H "Authorization: Bearer $RQE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient_email": "you@email.com",
+    "sender_email": "noreply@yourdomain.com",
+    "sender_name": "Your Company",
+    "subject": "Hello from ReallyQuickEmails",
+    "html_body": "<h1>Hello!</h1><p>This is my first email.</p>"
+  }'
+```
+
+</Tab>
+
+<Tab title="JavaScript">
+
+```javascript
+const res = await fetch('https://api.reallyquickemails.com/v1/send-email', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.RQE_API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    recipient_email: 'you@email.com',
+    sender_email: 'noreply@yourdomain.com',
+    sender_name: 'Your Company',
+    subject: 'Hello from ReallyQuickEmails',
+    html_body: '<h1>Hello!</h1><p>This is my first email.</p>',
+  }),
+});
+
+const data = await res.json();
+console.log(data); // { message: 'Email sent successfully', email_id: '...', project_id: '...' }
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import os, requests
+
+res = requests.post(
+    'https://api.reallyquickemails.com/v1/send-email',
+    headers={
+        'Authorization': f"Bearer {os.environ['RQE_API_KEY']}",
+        'Content-Type': 'application/json',
+    },
+    json={
+        'recipient_email': 'you@email.com',
+        'sender_email': 'noreply@yourdomain.com',
+        'sender_name': 'Your Company',
+        'subject': 'Hello from ReallyQuickEmails',
+        'html_body': '<h1>Hello!</h1><p>This is my first email.</p>',
+    },
+)
+print(res.json())
+```
+
+</Tab>
+
+</Tabs>
+
+</Step>
+
+<Step title="Validate the response">
+
+A successful response returns `200 OK` with:
+
+```json
+{
+  "message": "Email sent successfully",
+  "email_id": "550e8400-e29b-41d4-a716-446655440000",
+  "project_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+Common errors:
+
+| Status | Cause | Fix |
+|---|---|---|
+| `401` | Invalid API key or missing correct prefix | Verify `Authorization: Bearer sk_test_...` |
+| `400` | Missing required field | Check `recipient_email`, `sender_email`, `html_body` |
+
+An unverified `sender_email` does **not** produce a synchronous error: the request responds `200` and the send fails in the background. Check the status in Activity and verify your domain in [Domains](/en/api-reference/domains).
+
+</Step>
+
+<Step title="Verify the send in the dashboard">
+
+In the dashboard's **Activity**, you'll see the send flagged with `is_test=true` (because you used `sk_test_*`).
+
+When the email is opened, the `email.open` event arrives at your project's `webhook_url_dev` if it's configured. See [Webhooks](/en/api-reference/webhooks).
+
+</Step>
+
+</Steps>
+
+## Next steps
+
+<Info>
+  **Ready for production**
+
+  Repeat the send with `sk_live_*` (or `sk_proj_*`) when you want to send to real customers. Configure `webhook_url` and `inbound_webhook_url` in your project.
+</Info>
+
+- **[Templates with variables](/en/guides/templates)** — Handlebars, `{{variables}}`, helpers.
+- **[Scheduling sends](/en/guides/scheduling)** — future dates with time zones.
+- **[Attachments](/en/guides/attachments)** — PDFs, .ics calendar events.
+- **[Send batch](/en/api-reference/public-api)** — up to 10,000 recipients per request.
+- **[Webhooks](/en/api-reference/webhooks)** — receive `email.delivery`, `email.open`, `email.click`, `email.bounce` events.
