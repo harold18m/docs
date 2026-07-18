@@ -127,8 +127,6 @@
     ]
   },
   "footer": {
-    "socials": {
-      "github": "https://github.com/DropoutCapital"
-    }
+    "socials": {}
   }
 }
