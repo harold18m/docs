@@ -20,6 +20,39 @@ All domain endpoints require a Secret Key:
 
 ---
 
+## Integration flow
+
+If you're automating domain onboarding from your own application, here's the full path:
+
+<Steps>
+  <Step title="Register the domain">
+    `POST /domains/register` returns all 7 DNS records in `dns_records`, ready to display.
+  </Step>
+  <Step title="Offer one-click setup">
+    `GET /domains/{domain}/domain-connect`. If it returns `supported: true`, redirect the user to `apply_url` and their provider creates the records automatically. Otherwise, show the records for manual setup.
+  </Step>
+  <Step title="Verify">
+    `POST /domains/{domain}/verify` checks the real status and updates the records. Call it when the user says they've configured their DNS.
+  </Step>
+  <Step title="Confirm before sending">
+    Receive `domain.verified` via webhook, or check `GET /domains/{domain}/status`. The domain can send when `can_send: true`.
+  </Step>
+</Steps>
+
+<Tip>
+  **Don't poll — listen for the webhook.** When a domain becomes verified, RQE emits `domain.verified` to your project's webhook URL (and `domain.failed` if verification fails). It fires **once**, on the transition. See [Webhooks](/en/api-reference/webhooks#domainverified-domainfailed).
+</Tip>
+
+<Info>
+  Pending domains are re-checked on their own, with no call from you: frequently on the first day, spacing out as the registration ages. If your user publishes their DNS days after registering, you still get the webhook. `POST /verify` remains useful for an immediate response when the user says "I've set it up".
+</Info>
+
+<Note>
+  **SPF and DMARC are not validated automatically.** They always show `status: "not_set"` in `dns_records`, even when correctly published, and `can_send` ignores them. If you need to confirm your user set them up, resolve them yourself with a DNS query.
+</Note>
+
+---
+
 ## POST /domains/register
 
 Registers a sending domain: creates the sending identity, generates the DNS records, and creates the sender profile.
@@ -431,15 +464,63 @@ curl -X GET https://api.reallyquickemails.com/domains/mystore.com/status \
 
 ## GET /domains
 
-Looks up a domain by name and returns its basic information and sender profile.
+With the `domain` parameter, looks up **one** by name. Without it, **lists** the project's domains with pagination — so you can reconcile N domains in one request instead of N lookups.
 
 ### Query Parameters
 
-| Parameter | Type   | Required | Description                          |
-| --------- | ------ | -------- | ------------------------------------ |
-| `domain`  | string | Yes      | Domain name to look up.              |
+| Parameter | Type    | Required | Description                                                              |
+| --------- | ------- | -------- | ------------------------------------------------------------------------ |
+| `domain`  | string  | No       | Look up a single domain. If present, the other parameters are ignored.   |
+| `limit`   | integer | No       | Results per page. Default `50`, max `200`.                               |
+| `offset`  | integer | No       | Pagination offset. Default `0`.                                          |
+| `status`  | string  | No       | Filter by state: `pending`, `verified` or `failed`.                      |
 
-### Example
+### Example — listing
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET "https://api.reallyquickemails.com/domains?limit=50&status=verified" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "domains": [
+    {
+      "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+      "domain": "mystore.com",
+      "verification_status": "verified",
+      "external_key": null,
+      "can_send": true,
+      "sender_profile": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "from_name": "My Store",
+        "from_email": "sales@mystore.com",
+        "domain_authenticated": true
+      },
+      "created_at": "2026-03-01T12:00:00.000Z"
+    }
+  ],
+  "total": 128,
+  "limit": 50,
+  "offset": 0,
+  "has_more": true
+}
+```
+
+Domains come ordered by creation date, newest first. `total` is the full count matching the filter; keep paginating while `has_more` is `true`.
+
+### Example — single lookup
 
 <Tabs>
 
@@ -476,11 +557,113 @@ curl -X GET "https://api.reallyquickemails.com/domains?domain=mystore.com" \
 
 ### Error Codes
 
-| Code   | Description                                              |
-| ------ | -------------------------------------------------------- |
-| `400`  | `domain` parameter not provided.                         |
-| `401`  | Invalid API Key.                                         |
-| `404`  | Domain not found in the project.                         |
+| Code   | Description                                                              |
+| ------ | ------------------------------------------------------------------------ |
+| `401`  | Invalid API Key.                                                         |
+| `404`  | Domain not found (lookup only — an empty listing returns `200`).         |
+
+---
+
+## GET /domains/:domain/domain-connect
+
+One-click DNS setup. If the domain's DNS provider supports the [Domain Connect](https://www.domainconnect.org/) standard, this returns a signed URL that creates all 7 records automatically: the end user just confirms on their provider's screen, with nothing to copy by hand.
+
+Use it right after `POST /domains/register`. If the provider doesn't support it, fall back to showing the `dns_records` for manual setup.
+
+<Info>
+  Measured coverage across real domains: roughly 50% support Domain Connect. Cloudflare is live. Always handle the `supported: false` case.
+</Info>
+
+### Path Parameters
+
+| Parameter | Type   | Description                                 |
+| --------- | ------ | ------------------------------------------- |
+| `domain`  | string | Registered domain (e.g. `mystore.com`).     |
+
+### Query Parameters
+
+| Parameter      | Type   | Required | Description                                                       |
+| -------------- | ------ | -------- | ----------------------------------------------------------------- |
+| `redirect_uri` | string | No       | URL the user returns to after applying the records. See note below. |
+
+<Warning>
+  `redirect_uri` only accepts ReallyQuickEmails hosts (`app.reallyquickemails.com`) and local development hosts. If you send your own application's domain, the response is `supported: false` with `reason: "invalid_redirect_uri"`. Omit the parameter instead: the `apply_url` still works, the user just lands on their DNS provider's page rather than returning to your app.
+</Warning>
+
+### Example
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET "https://api.reallyquickemails.com/domains/mystore.com/domain-connect" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Response** `200 OK` — supported provider
+
+```json
+{
+  "supported": true,
+  "provider_name": "Cloudflare",
+  "zone": "mystore.com",
+  "host": "",
+  "apply_url": "https://dash.cloudflare.com/domainconnect/v2/domainTemplates/providers/reallyquickemails.com/services/email-sending/apply?domain=mystore.com&sesVerify=...&sig=...&key=_dck1"
+}
+```
+
+Redirect the user to `apply_url`. Once they confirm, their provider creates the records. Then call `POST /domains/{domain}/verify` to confirm the status.
+
+**Response** `200 OK` — unsupported provider
+
+```json
+{
+  "supported": false,
+  "reason": "no_domain_connect",
+  "zone": "mystore.com",
+  "host": ""
+}
+```
+
+### Response Fields
+
+| Field           | Description                                                                    |
+| --------------- | ------------------------------------------------------------------------------ |
+| `supported`     | `true` if a one-click flow is available for this domain.                        |
+| `apply_url`     | Signed URL to redirect to. Only present when `supported: true`.                 |
+| `provider_name` | Detected DNS provider name (e.g. `Cloudflare`, `GoDaddy`).                      |
+| `zone`          | Detected DNS zone. For subdomains, the root domain holding the NS records.      |
+| `host`          | Subdomain prefix within the zone. Empty string when the domain is the root.     |
+| `reason`        | Why no flow is available. Only present when `supported: false`.                 |
+
+### `reason` values
+
+| Value                        | Meaning                                                              |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `no_zone`                    | Could not determine the domain's DNS zone.                           |
+| `no_domain_connect`          | The DNS provider does not advertise Domain Connect support.          |
+| `no_sync_flow`               | The provider supports Domain Connect but not the interactive flow.   |
+| `template_not_onboarded`     | The provider has not enabled the ReallyQuickEmails template.         |
+| `identity_missing_tokens`    | The domain has no tokens yet. Register the domain first.             |
+| `invalid_redirect_uri`       | The `redirect_uri` you sent is not allowed.                          |
+| `signing_key_not_configured` | Service configuration error. Contact support.                        |
+
+<Note>
+  `supported: false` is not an error — the response is still `200 OK`. Show the DNS records from `GET /domains/{domain}/dns-records` so the user can configure them manually.
+</Note>
+
+### Error Codes
+
+| Code   | Description                        |
+| ------ | ---------------------------------- |
+| `401`  | Invalid API Key.                   |
+| `404`  | Domain not found in the project.   |
+| `500`  | Error querying the DNS provider.   |
 
 ---
 

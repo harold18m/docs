@@ -20,6 +20,39 @@ Todos los endpoints de dominios requieren Secret Key:
 
 ---
 
+## Flujo de integracion
+
+Si automatizas el alta de dominios desde tu propia aplicación, este es el recorrido completo:
+
+<Steps>
+  <Step title="Registra el dominio">
+    `POST /domains/register` retorna los 7 registros DNS en `dns_records`, ya listos para mostrar.
+  </Step>
+  <Step title="Ofrece la configuración en un clic">
+    `GET /domains/{domain}/domain-connect`. Si retorna `supported: true`, redirige al usuario a `apply_url` y su proveedor crea los registros solo. Si no, muestra los registros para configuración manual.
+  </Step>
+  <Step title="Verifica">
+    `POST /domains/{domain}/verify` consulta el estado real y actualiza los registros. Llámalo cuando el usuario indique que ya configuró su DNS.
+  </Step>
+  <Step title="Confirma antes de enviar">
+    Recibe `domain.verified` por webhook, o consulta `GET /domains/{domain}/status`. El dominio puede enviar cuando `can_send: true`.
+  </Step>
+</Steps>
+
+<Tip>
+  **No pollees: escucha el webhook.** Cuando un dominio queda verificado, RQE emite `domain.verified` hacia la URL de webhooks de tu proyecto (y `domain.failed` si la verificación falla). Se emite **una sola vez**, en la transición. Ver [Webhooks](/api-reference/webhooks#domainverified-domainfailed).
+</Tip>
+
+<Info>
+  Los dominios en `pending` se re-verifican solos, sin que llames a nada: con frecuencia alta el primer día y espaciándose a medida que el alta envejece. Si tu usuario publica el DNS días después del registro, igual recibirás el webhook. `POST /verify` sigue siendo útil para respuesta inmediata cuando el usuario dice "ya lo configuré".
+</Info>
+
+<Note>
+  **SPF y DMARC no se validan automáticamente.** Siempre aparecen con `status: "not_set"` en `dns_records`, incluso si están correctamente publicados. `can_send` no los considera. Si necesitas comprobar que tu usuario los configuró, resuélvelos por tu cuenta con una consulta DNS.
+</Note>
+
+---
+
 ## POST /domains/register
 
 Registra un dominio de envío: crea la identidad de envío, genera los registros DNS y crea el perfil de remitente.
@@ -431,15 +464,63 @@ curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/status \
 
 ## GET /domains
 
-Busca un dominio por nombre y retorna su información básica y el perfil de remitente.
+Con el parámetro `domain` busca **uno** por nombre. Sin él, **lista** los dominios del proyecto de forma paginada — para reconciliar N dominios en una request en lugar de N consultas.
 
 ### Query Parameters
 
-| Parámetro | Tipo   | Requerido | Descripción                          |
-| --------- | ------ | --------- | ------------------------------------ |
-| `domain`  | string | Sí        | Nombre del dominio a buscar.         |
+| Parámetro | Tipo    | Requerido | Descripción                                                                       |
+| --------- | ------- | --------- | --------------------------------------------------------------------------------- |
+| `domain`  | string  | No        | Busca un dominio puntual. Si lo envías, los demás parámetros se ignoran.          |
+| `limit`   | integer | No        | Resultados por página. Default `50`, máximo `200`.                                |
+| `offset`  | integer | No        | Desplazamiento para paginar. Default `0`.                                         |
+| `status`  | string  | No        | Filtra por estado: `pending`, `verified` o `failed`.                              |
 
-### Ejemplo
+### Ejemplo — listado
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET "https://api.reallyquickemails.com/domains?limit=50&status=verified" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "success": true,
+  "domains": [
+    {
+      "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+      "domain": "mitienda.com",
+      "verification_status": "verified",
+      "external_key": null,
+      "can_send": true,
+      "sender_profile": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "from_name": "Mi Tienda",
+        "from_email": "ventas@mitienda.com",
+        "domain_authenticated": true
+      },
+      "created_at": "2026-03-01T12:00:00.000Z"
+    }
+  ],
+  "total": 128,
+  "limit": 50,
+  "offset": 0,
+  "has_more": true
+}
+```
+
+Los dominios vienen ordenados por fecha de creación descendente. `total` es la cantidad total que coincide con el filtro; pagina mientras `has_more` sea `true`.
+
+### Ejemplo — lookup de uno
 
 <Tabs>
 
@@ -476,11 +557,113 @@ curl -X GET "https://api.reallyquickemails.com/domains?domain=mitienda.com" \
 
 ### Codigos de Error
 
-| Código | Descripción                                              |
-| ------ | -------------------------------------------------------- |
-| `400`  | Parámetro `domain` no proporcionado.                     |
-| `401`  | API Key inválida.                                        |
-| `404`  | Dominio no encontrado en el proyecto.                    |
+| Código | Descripción                                                                    |
+| ------ | ------------------------------------------------------------------------------ |
+| `401`  | API Key inválida.                                                              |
+| `404`  | Dominio no encontrado (solo en el lookup: el listado vacío retorna `200`).      |
+
+---
+
+## GET /domains/:domain/domain-connect
+
+Configuración de DNS en un clic. Si el proveedor DNS del dominio soporta el estándar [Domain Connect](https://www.domainconnect.org/), retorna una URL firmada que crea los 7 registros automáticamente: el usuario final solo confirma en la pantalla de su proveedor, sin copiar nada a mano.
+
+Úsalo justo después de `POST /domains/register`. Si el proveedor no lo soporta, cae de vuelta a mostrar los registros de `dns_records` para configuración manual.
+
+<Info>
+  Cobertura medida sobre dominios reales: alrededor del 50% soporta Domain Connect. Cloudflare está operativo. Siempre debes manejar el caso `supported: false`.
+</Info>
+
+### Parametros de Ruta
+
+| Parámetro | Tipo   | Descripción                              |
+| --------- | ------ | ---------------------------------------- |
+| `domain`  | string | Dominio registrado (ej. `mitienda.com`). |
+
+### Query Parameters
+
+| Parámetro      | Tipo   | Requerido | Descripción                                                        |
+| -------------- | ------ | --------- | ------------------------------------------------------------------ |
+| `redirect_uri` | string | No        | URL a la que vuelve el usuario tras aplicar los registros. Ver nota. |
+
+<Warning>
+  `redirect_uri` solo acepta hosts de ReallyQuickEmails (`app.reallyquickemails.com`) y de desarrollo local. Si envías el dominio de tu propia aplicación, la respuesta es `supported: false` con `reason: "invalid_redirect_uri"`. Omite el parámetro: la `apply_url` sigue siendo válida, solo que el usuario termina en la página de su proveedor DNS en vez de volver a tu aplicación.
+</Warning>
+
+### Ejemplo
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X GET "https://api.reallyquickemails.com/domains/mitienda.com/domain-connect" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK` — proveedor compatible
+
+```json
+{
+  "supported": true,
+  "provider_name": "Cloudflare",
+  "zone": "mitienda.com",
+  "host": "",
+  "apply_url": "https://dash.cloudflare.com/domainconnect/v2/domainTemplates/providers/reallyquickemails.com/services/email-sending/apply?domain=mitienda.com&sesVerify=...&sig=...&key=_dck1"
+}
+```
+
+Redirige al usuario a `apply_url`. Al confirmar, su proveedor crea los registros. Después llama a `POST /domains/{domain}/verify` para confirmar el estado.
+
+**Respuesta** `200 OK` — proveedor no compatible
+
+```json
+{
+  "supported": false,
+  "reason": "no_domain_connect",
+  "zone": "mitienda.com",
+  "host": ""
+}
+```
+
+### Campos de respuesta
+
+| Campo           | Descripción                                                                       |
+| --------------- | --------------------------------------------------------------------------------- |
+| `supported`     | `true` si hay un flujo de un clic disponible para este dominio.                    |
+| `apply_url`     | URL firmada a la que debes redirigir. Solo presente cuando `supported: true`.      |
+| `provider_name` | Nombre del proveedor DNS detectado (ej. `Cloudflare`, `GoDaddy`).                  |
+| `zone`          | Zona DNS detectada. Para subdominios, el dominio raíz que tiene los NS.            |
+| `host`          | Prefijo del subdominio dentro de la zona. Cadena vacía si el dominio es la raíz.   |
+| `reason`        | Motivo por el que no hay flujo disponible. Solo presente cuando `supported: false`. |
+
+### Valores de `reason`
+
+| Valor                      | Significado                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `no_zone`                  | No se pudo determinar la zona DNS del dominio.                               |
+| `no_domain_connect`        | El proveedor DNS no publica soporte para Domain Connect.                      |
+| `no_sync_flow`             | El proveedor soporta Domain Connect pero no el flujo interactivo.            |
+| `template_not_onboarded`   | El proveedor no tiene habilitada la plantilla de ReallyQuickEmails.          |
+| `identity_missing_tokens`  | El dominio aún no tiene tokens generados. Registra el dominio primero.       |
+| `invalid_redirect_uri`     | El `redirect_uri` enviado no está permitido.                                  |
+| `signing_key_not_configured` | Error de configuración del servicio. Contacta a soporte.                    |
+
+<Note>
+  `supported: false` no es un error: la respuesta es `200 OK`. Muestra los registros DNS de `GET /domains/{domain}/dns-records` para que el usuario los configure manualmente.
+</Note>
+
+### Codigos de Error
+
+| Código | Descripción                           |
+| ------ | ------------------------------------- |
+| `401`  | API Key inválida.                     |
+| `404`  | Dominio no encontrado en el proyecto. |
+| `500`  | Error al consultar el proveedor DNS.  |
 
 ---
 

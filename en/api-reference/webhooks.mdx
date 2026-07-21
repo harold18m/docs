@@ -55,6 +55,10 @@ Replace the tunnel URL with your server's. The payload's `is_test` flag distingu
 | `email.click` | Click on a link | `url_clicked` |
 | `email.suppressed` | The recipient is on the suppression list — the send was blocked before going out | `email`, `suppressed_at` (see [note](#emailsuppressed)) |
 | `email.inbound` | Recipient replied to your email | (see Replies section) |
+| `sender.verified` | A sender verified by individual email (magic link) is ready | `identity_id`, `sender_email`, `can_send` |
+| `sender.failed` | Individual sender verification failed | `identity_id`, `sender_email` |
+| `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domainverified-domainfailed) |
+| `domain.failed` | Domain verification failed in SES | see [below](#domainverified-domainfailed) |
 
 ## Outbound payload
 
@@ -118,6 +122,44 @@ Differences vs the other outbound events:
   }
 }
 ```
+
+### `domain.verified` / `domain.failed`
+
+Emitted when a sending domain **changes** verification state. They're the alternative to polling `GET /domains/{domain}/status` in a loop: if you automate domain onboarding, listen for these events instead of polling.
+
+```json
+{
+  "event": "domain.verified",
+  "timestamp": "2026-07-21T14:05:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "identity_type": "domain",
+    "domain": "mystore.com",
+    "verification_status": "verified",
+    "previous_verification_status": "pending",
+    "sender_profile_id": "uuid",
+    "sender_email": "sales@mystore.com",
+    "sender_name": "My Store",
+    "domain_authenticated": true,
+    "can_send": true,
+    "details": {
+      "domain_verification": "Success",
+      "dkim_verification": "Success",
+      "mail_from_status": "Success"
+    },
+    "verified_at": "2026-07-21T14:05:00.000Z"
+  }
+}
+```
+
+<Info>
+  **Only on transition.** Pending domains are re-checked periodically, but the webhook fires **once**, when the state actually changes. A domain that stays `verified` does not re-emit. `previous_verification_status` tells you which state it came from.
+</Info>
+
+<Note>
+  `domain.failed` arrives in the same shape, with `verification_status: "failed"` and `can_send: false`. Check `details` to see which part failed (`domain_verification` or `dkim_verification`), and call `POST /domains/{domain}/recreate` if DKIM is stuck.
+</Note>
 
 ## Request headers
 

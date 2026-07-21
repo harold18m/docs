@@ -55,6 +55,10 @@ Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload
 | `email.click` | Click en un link | `url_clicked` |
 | `email.suppressed` | El destinatario está en la lista de supresión — el envío se bloqueó antes de salir | `email`, `suppressed_at` (ver [nota](#emailsuppressed)) |
 | `email.inbound` | Destinatario respondió tu email | (ver sección Replies) |
+| `sender.verified` | Un remitente verificado por email individual (magic link) quedó listo | `identity_id`, `sender_email`, `can_send` |
+| `sender.failed` | La verificación del remitente individual falló | `identity_id`, `sender_email` |
+| `domain.verified` | Un dominio de envío quedó verificado (dominio + DKIM) | ver [abajo](#domainverified-domainfailed) |
+| `domain.failed` | La verificación del dominio falló en SES | ver [abajo](#domainverified-domainfailed) |
 
 ## Payload outbound
 
@@ -118,6 +122,44 @@ Particularidades vs los demás eventos outbound:
   }
 }
 ```
+
+### `domain.verified` / `domain.failed`
+
+Se emiten cuando un dominio de envío **cambia** de estado de verificación. Son la alternativa a consultar `GET /domains/{domain}/status` en bucle: si automatizas el alta de dominios, escucha estos eventos en lugar de pollear.
+
+```json
+{
+  "event": "domain.verified",
+  "timestamp": "2026-07-21T14:05:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "identity_type": "domain",
+    "domain": "mitienda.com",
+    "verification_status": "verified",
+    "previous_verification_status": "pending",
+    "sender_profile_id": "uuid",
+    "sender_email": "ventas@mitienda.com",
+    "sender_name": "Mi Tienda",
+    "domain_authenticated": true,
+    "can_send": true,
+    "details": {
+      "domain_verification": "Success",
+      "dkim_verification": "Success",
+      "mail_from_status": "Success"
+    },
+    "verified_at": "2026-07-21T14:05:00.000Z"
+  }
+}
+```
+
+<Info>
+  **Solo en la transición.** El estado de los dominios `pending` se re-consulta periódicamente, pero el webhook se emite **una única vez**, cuando el estado realmente cambia. Un dominio que sigue `verified` no vuelve a emitir. `previous_verification_status` te dice desde qué estado venía.
+</Info>
+
+<Note>
+  `domain.failed` llega con la misma forma, con `verification_status: "failed"` y `can_send: false`. Revisa `details` para saber qué parte falló (`domain_verification` o `dkim_verification`) y llama a `POST /domains/{domain}/recreate` si DKIM quedó atascado.
+</Note>
 
 ## Headers de la request
 
