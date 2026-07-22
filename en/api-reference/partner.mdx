@@ -1,0 +1,143 @@
+---
+title: Partner / Provisioning
+description: "Create client projects via API with your partner key to offer email to your own clients."
+---
+
+If you integrate RQE as a **platform for your own clients** (partner/reseller pattern), these endpoints let you **create a client project via API** and get its API key to operate on their behalf: register their reply/tracking domain, send, manage contacts.
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+<Info>
+  **Each client = one project.** The reply domain, tracking domain and stats are **per project**, so each of your clients is an independent RQE project with its own API key. These endpoints create and list those projects inside **your** partner organization.
+</Info>
+
+## Authentication
+
+Partner endpoints use a dedicated **partner key** (distinct from project API keys):
+
+```
+Authorization: Bearer sk_partner_xxxxxxxxxxxx
+```
+
+The partner key is tied to your organization and can only create and view projects **within it**. It's dedicated and revocable without affecting your sends. It's issued by RQE when your partner account is enabled. A missing or invalid key returns `401`.
+
+## Flow
+
+<Steps>
+  <Step title="Create the client project">
+    `POST /v1/partner/projects` with the client's name → you get `project_id`, `slug` and its `api_key` (`sk_proj_...`).
+  </Step>
+  <Step title="Set up their domain">
+    With the client's `api_key`, register their [reply domain](/en/api-reference/domains#reply-domain-clean-reply-to-token-less) and/or [tracking domain](/en/api-reference/domains#tracking-domain-click-links-on-your-own-domain).
+  </Step>
+  <Step title="Operate on their behalf">
+    Use the client's `api_key` to [send](/en/api-reference/public-api), manage [contacts](/en/api-reference/leads) and view activity — all isolated to that project.
+  </Step>
+</Steps>
+
+## POST /v1/partner/projects
+
+Creates a client project inside your partner organization. The `api_key` and `slug` are generated automatically.
+
+### Request Body
+
+| Field      | Type   | Required | Description                                    |
+| ---------- | ------ | -------- | ---------------------------------------------- |
+| `name`     | string | Yes      | Client name (e.g. `Phrasso`).                  |
+| `timezone` | string | No       | IANA timezone (e.g. `America/Lima`).           |
+| `country`  | string | No       | Client's country code.                         |
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Phrasso" }'
+```
+
+</Tab><Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/partner/projects",
+    headers={"Authorization": "Bearer sk_partner_xxxxxxxxxxxx"},
+    json={"name": "Phrasso"},
+)
+print(resp.json())
+```
+
+</Tab></Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "slug": "phrasso",
+  "api_key": "sk_proj_xxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+<Warning>
+  The `api_key` is returned **only once**, at creation. Store it securely — it's the credential you operate that client project with.
+</Warning>
+
+## GET /v1/partner/projects
+
+Lists the client projects in your organization.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "projects": [
+    {
+      "id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+      "name": "Phrasso",
+      "slug": "phrasso",
+      "created_at": "2026-07-22T16:00:00.000Z",
+      "disabled_at": null
+    }
+  ]
+}
+```
+
+## DELETE /v1/partner/projects/&#123;projectId&#125;
+
+Disables a client project (soft-disable). It is **not deleted**: links in already-sent emails depend on the project still existing. It stops sending and gets a `disabled_at`.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2 \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK`
+
+```json
+{ "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2", "disabled": true }
+```
+
+## Error codes
+
+| Code  | Description                                                         |
+| ----- | ------------------------------------------------------------------ |
+| `400` | `MISSING_NAME` — `name` is missing.                                |
+| `401` | Missing or invalid partner key.                                    |
+| `404` | `NOT_FOUND` — the project doesn't exist in your org (on DELETE).   |
+| `500` | `NO_OWNER` (org without owner) / `CREATE_FAILED` (creation error). |

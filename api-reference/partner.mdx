@@ -1,0 +1,143 @@
+---
+title: Partner / Provisioning
+description: "Crea proyectos-cliente por API con tu partner-key para ofrecer email a tus propios clientes."
+---
+
+Si integras RQE como **plataforma para tus propios clientes** (patrón partner/reseller), estos endpoints te dejan **crear un proyecto-cliente por API** y obtener su API key para operar en su nombre: registrar su reply/tracking domain, enviar, gestionar contactos.
+
+**Base URL:** `https://api.reallyquickemails.com`
+
+<Info>
+  **Cada cliente = un proyecto.** El reply domain, el tracking domain y las estadísticas son **por proyecto**, así que cada cliente tuyo es un proyecto RQE independiente con su propia API key. Estos endpoints crean y listan esos proyectos dentro de **tu** organización de partner.
+</Info>
+
+## Autenticación
+
+Los endpoints de partner usan una **partner-key** dedicada (distinta de las API keys de proyecto):
+
+```
+Authorization: Bearer sk_partner_xxxxxxxxxxxx
+```
+
+La partner-key está asociada a tu organización y solo puede crear y ver proyectos **dentro de ella**. Es dedicada y revocable sin afectar tus envíos. Se emite desde RQE al habilitar tu cuenta de partner. Una key inválida o ausente responde `401`.
+
+## Flujo
+
+<Steps>
+  <Step title="Crea el proyecto-cliente">
+    `POST /v1/partner/projects` con el nombre del cliente → recibes `project_id`, `slug` y su `api_key` (`sk_proj_...`).
+  </Step>
+  <Step title="Configura su dominio">
+    Con la `api_key` del cliente, registra su [reply domain](/api-reference/domains#reply-domain-reply-to-limpio-sin-token) y/o [tracking domain](/api-reference/domains#tracking-domain-links-de-click-con-tu-dominio).
+  </Step>
+  <Step title="Opera en su nombre">
+    Usa la `api_key` del cliente para [enviar](/api-reference/public-api), gestionar [contactos](/api-reference/leads) y ver actividad — todo aislado a ese proyecto.
+  </Step>
+</Steps>
+
+## POST /v1/partner/projects
+
+Crea un proyecto-cliente dentro de tu organización de partner. La `api_key` y el `slug` se generan automáticamente.
+
+### Request Body
+
+| Campo      | Tipo   | Requerido | Descripción                                              |
+| ---------- | ------ | --------- | -------------------------------------------------------- |
+| `name`     | string | Sí        | Nombre del cliente (ej. `Phrasso`).                      |
+| `timezone` | string | No        | Zona horaria IANA (ej. `America/Lima`).                 |
+| `country`  | string | No        | Código de país del cliente.                              |
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Phrasso" }'
+```
+
+</Tab><Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/partner/projects",
+    headers={"Authorization": "Bearer sk_partner_xxxxxxxxxxxx"},
+    json={"name": "Phrasso"},
+)
+print(resp.json())
+```
+
+</Tab></Tabs>
+
+**Respuesta** `201 Created`
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "slug": "phrasso",
+  "api_key": "sk_proj_xxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+<Warning>
+  La `api_key` se devuelve **una sola vez** en la creación. Guárdala de forma segura — es la credencial con la que operas ese proyecto-cliente.
+</Warning>
+
+## GET /v1/partner/projects
+
+Lista los proyectos-cliente de tu organización.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "projects": [
+    {
+      "id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+      "name": "Phrasso",
+      "slug": "phrasso",
+      "created_at": "2026-07-22T16:00:00.000Z",
+      "disabled_at": null
+    }
+  ]
+}
+```
+
+## DELETE /v1/partner/projects/&#123;projectId&#125;
+
+Deshabilita un proyecto-cliente (soft-disable). **No se borra**: los links de los emails ya enviados dependen de que el proyecto siga existiendo. Deja de enviar y queda con `disabled_at`.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2 \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{ "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2", "disabled": true }
+```
+
+## Códigos de error
+
+| Código | Descripción                                                        |
+| ------ | ------------------------------------------------------------------ |
+| `400`  | `MISSING_NAME` — falta `name`.                                     |
+| `401`  | Partner-key ausente o inválida.                                    |
+| `404`  | `NOT_FOUND` — el proyecto no existe en tu organización (en DELETE).|
+| `500`  | `NO_OWNER` (org sin owner) / `CREATE_FAILED` (error al crear).     |
