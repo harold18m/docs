@@ -31,6 +31,10 @@ La conexión es segura por diseño:
   La clave completa se muestra **una sola vez**. Si la pierdes, revócala y crea una nueva. No la pegues en código del lado del cliente ni en repositorios.
 </Warning>
 
+<Warning>
+  Las claves del **API REST** (`sk_proj_...`) **no funcionan en el MCP** — devuelven 401. El MCP usa su propio tipo de clave (`rqe_mcp_...`), con permisos granulares, que se crea en esta misma sección.
+</Warning>
+
 </Step>
 
 <Step title="Conectar tu cliente de IA">
@@ -172,8 +176,23 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 | `get_metrics` | `reports:read` | Métricas agregadas del proyecto en un rango |
 | `list_segments` | `segments:read` | Segmentos con su tamaño y su regla |
 | `list_templates` | `templates:read` | Plantillas del proyecto (metadatos) |
-| `list_automations` | `automations:read` | Automatizaciones y si están activas, en pausa o borrador |
+| `get_template` | `templates:read` | Una plantilla CON su contenido: HTML final y fuente editable — para verificar asunto, preheader, links y cuerpo contra la base |
+| `list_automations` | `automations:read` | Automatizaciones con su estado y su disparador real |
+| `get_automation` | `automations:read` | Una automatización CON su grafo de nodos y conexiones — para auditar un flujo antes de activarlo |
 | `get_automation_report` | `automations:read` | Desempeño de una automatización: enviados, abiertos, clics |
+| `get_automation_runs` | `automations:read` | Los runs de una automatización: para quién disparó, cuándo y en qué terminó |
+
+</Accordion>
+
+<Accordion title="Diagnóstico — integrations:read">
+
+Para responder "¿por qué no disparó mi flujo?" sin esperar a soporte.
+
+| Herramienta | Qué hace |
+|---|---|
+| `get_shopify_integration_status` | Salud de la integración Shopify: webhooks suscritos vs esperados, eventos recibidos, entregas rechazadas |
+| `list_checkout_events` | Checkouts de Shopify que llegaron a la plataforma, con su estado de procesamiento |
+| `diagnose_automation` | Camina la cadena completa del carrito abandonado y nombra el primer eslabón roto |
 
 </Accordion>
 

@@ -31,6 +31,10 @@ The connection is secure by design:
   The full key is shown **only once**. If you lose it, revoke it and create a new one. Never paste it into client-side code or repositories.
 </Warning>
 
+<Warning>
+  **REST API keys** (`sk_proj_...`) **do not work on the MCP** — they return 401. The MCP uses its own key type (`rqe_mcp_...`), with granular permissions, created in this same section.
+</Warning>
+
 </Step>
 
 <Step title="Connect your AI client">
@@ -172,8 +176,23 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 | `get_metrics` | `reports:read` | Aggregated project metrics over a range |
 | `list_segments` | `segments:read` | Segments with their size and rule |
 | `list_templates` | `templates:read` | Project templates (metadata) |
-| `list_automations` | `automations:read` | Automations and whether they are active, paused or draft |
+| `get_template` | `templates:read` | One template WITH its content: final HTML and editable source — to verify subject, preheader, links and body against the database |
+| `list_automations` | `automations:read` | Automations with their status and real trigger |
+| `get_automation` | `automations:read` | One automation WITH its node graph and connections — to audit a flow before activating it |
 | `get_automation_report` | `automations:read` | Performance of one automation: sent, opened, clicked |
+| `get_automation_runs` | `automations:read` | The runs of one automation: who it fired for, when and how it ended |
+
+</Accordion>
+
+<Accordion title="Diagnostics — integrations:read">
+
+To answer "why didn't my flow trigger?" without waiting for support.
+
+| Tool | What it does |
+|---|---|
+| `get_shopify_integration_status` | Health of the Shopify integration: subscribed vs expected webhooks, events received, rejected deliveries |
+| `list_checkout_events` | Shopify checkouts that reached the platform, with their processing state |
+| `diagnose_automation` | Walks the full abandoned-cart chain and names the first broken link |
 
 </Accordion>
 
