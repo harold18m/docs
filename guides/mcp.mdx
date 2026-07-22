@@ -6,7 +6,7 @@ description: "Conecta tu cuenta de ReallyQuickEmails a Claude, Cursor u otro cli
 El **servidor MCP** de ReallyQuickEmails expone tu proyecto mediante el [Model Context Protocol](https://modelcontextprotocol.io). Conéctalo a Claude Desktop, Cursor o Claude Code y tu asistente podrá consultar tus contactos, campañas, métricas y automatizaciones respondiendo en lenguaje natural.
 
 <Info>
-  Tu asistente puede **consultar** datos y, con permisos de escritura, **modificar** contactos y crear segmentos. Lo que todavía **no** puede es **enviar** correo ni crear campañas de envío: eso llega en una fase siguiente, siempre detrás de un permiso que tú concedes. Ninguna herramienta de escritura envía correo por sí sola.
+  Tu asistente puede **consultar** datos, **modificar** contactos y segmentos, **crear campañas en borrador** (que tú revisas y envías desde la app), **inscribir contactos en automatizaciones** e incluso **enviar correo** — cada capacidad detrás de su propio permiso, que tú concedes al crear la clave. **Crear automatizaciones completas por chat llega próximamente.**
 </Info>
 
 La conexión es segura por diseño:
@@ -117,20 +117,23 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 | Permiso | Habilita |
 |---|---|
 | `contacts:read` | Contactos, su actividad, eventos, remitentes, dominios y lista de supresión |
-| `contacts:write` | Agregar tags y atributos a contactos existentes |
+| `contacts:write` | Crear/actualizar contactos, tags, atributos, eventos y supresión |
 | `campaigns:read` | Campañas y sus reportes de métricas |
+| `campaigns:write` | Crear campañas **en borrador** (nunca las envía) |
 | `reports:read` | Métricas agregadas del proyecto en un rango de fechas |
 | `segments:read` | Segmentos y sus reglas |
 | `segments:write` | Crear segmentos |
 | `templates:read` | Plantillas (metadatos, no el cuerpo del email) |
 | `automations:read` | Automatizaciones y sus reportes |
+| `automations:write` | Inscribir contactos en automatizaciones activas |
+| `sends:execute` | **Enviar correo real.** El permiso más sensible — concédelo solo si quieres que el asistente envíe por ti |
 
 <Tip>
   Empieza con el mínimo. Si solo quieres que el asistente analice el desempeño de tus campañas, `campaigns:read` y `reports:read` bastan. Los permisos de escritura (`:write`) concédelos solo si quieres que el asistente modifique tus datos.
 </Tip>
 
 <Warning>
-  Los permisos de escritura modifican tus datos reales. Ninguno envía correo, pero **agregar un tag puede inscribir al contacto en una automatización activa** que sí envíe. Concédelos con intención.
+  Los permisos de escritura modifican tus datos reales. Solo `sends:execute` envía correo directamente, pero ten presente que **agregar un tag, registrar un evento o inscribir en una automatización activa puede resultar en un envío** si tienes flujos configurados con esos triggers. Concédelos con intención.
 </Warning>
 
 ---
@@ -174,15 +177,32 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 
 </Accordion>
 
-<Accordion title="Escritura — contacts:write / segments:write">
+<Accordion title="Escritura — contacts:write / segments:write / campaigns:write / automations:write">
 
-Modifican datos reales. Ninguna envía correo.
+Modifican datos reales. Ninguna de estas envía correo directamente, pero las marcadas pueden disparar automatizaciones activas que sí envíen.
 
 | Herramienta | Permiso | Qué hace |
 |---|---|---|
-| `add_tags` | `contacts:write` | Agrega tags a un contacto existente (unión, sin duplicados). Puede inscribirlo en automatizaciones activas con ese trigger |
+| `upsert_contacts` | `contacts:write` | Crea o actualiza hasta 1000 contactos por email, con atributos y segmentos. Puede disparar flujos de contacto nuevo |
+| `add_tags` | `contacts:write` | Agrega tags a un contacto existente (unión, sin duplicados). Puede disparar flujos por tag |
 | `set_attributes` | `contacts:write` | Agrega o actualiza atributos de un contacto existente (los demás se conservan) |
+| `track_event` | `contacts:write` | Registra un evento personalizado (compra, registro…). Puede disparar flujos por evento |
+| `suppress_email` | `contacts:write` | Agrega direcciones a la lista de supresión (dejan de recibir correo) |
 | `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
+| `create_campaign` | `campaigns:write` | Crea una campaña **siempre en borrador** — tú la revisas, completas y envías desde la app |
+| `enroll_in_automation` | `automations:write` | Inscribe un contacto en una automatización **activa** — el flujo corre de inmediato y puede enviarle correo |
+
+</Accordion>
+
+<Accordion title="Envío — sends:execute">
+
+| Herramienta | Qué hace |
+|---|---|
+| `send_email` | **Envía un correo real de inmediato** (hasta 50 destinatarios), desde un remitente verificado del proyecto. Soporta `idempotency_key`: la misma clave dentro de 24 h devuelve el resultado anterior en vez de enviar de nuevo |
+
+<Warning>
+  `send_email` no es un borrador y no se puede deshacer. Concede `sends:execute` solo a claves cuyo asistente deba enviar por ti, y revócala si dejas de necesitarlo.
+</Warning>
 
 </Accordion>
 
@@ -211,7 +231,11 @@ Tu API Key (`sk_...`) da acceso completo a la API, incluido el envío de correo,
 </Accordion>
 
 <Accordion title="¿El asistente puede enviar correos o borrar datos?">
-No envía correo ni crea campañas de envío: eso requiere un permiso que todavía no está disponible. Con permisos de escritura sí puede agregar tags y atributos a contactos y crear segmentos, pero no borra contactos ni datos. Cada capacidad de escritura es un permiso `:write` separado que tú concedes explícitamente.
+Puede enviar correo **solo** si le concediste `sends:execute` — sin ese permiso, ni siquiera ve la herramienta de envío. Las campañas que crea nacen siempre en borrador y las envías tú desde la app. No borra contactos ni datos: no existen herramientas de borrado. Cada capacidad es un permiso separado que concedes explícitamente al crear la clave.
+</Accordion>
+
+<Accordion title="¿Puede crear automatizaciones (flujos) completas?">
+Todavía no — llega **próximamente**. Hoy puede inscribir contactos en automatizaciones que ya construiste (con `automations:write`) y consultar su desempeño, pero el diseño del flujo (nodos, triggers, condiciones) se hace desde la app.
 </Accordion>
 
 <Accordion title="¿Puedo tener varias claves?">
