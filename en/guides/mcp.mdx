@@ -6,7 +6,7 @@ description: "Connect your ReallyQuickEmails account to Claude, Cursor or anothe
 The ReallyQuickEmails **MCP server** exposes your project through the [Model Context Protocol](https://modelcontextprotocol.io). Connect it to Claude Desktop, Cursor or Claude Code and your assistant can query your contacts, campaigns, metrics and automations, answering in natural language.
 
 <Info>
-  Today the server is **read-only**: your assistant can query and analyze, not modify or send. Writing (creating contacts, segments, draft campaigns) and sending will arrive in later phases, always behind permissions you grant.
+  Your assistant can **query** data and, with write permissions, **modify** contacts and create segments. What it still **cannot** do is **send** email or create sending campaigns: that arrives in a later phase, always behind a permission you grant. No write tool sends email on its own.
 </Info>
 
 The connection is secure by design:
@@ -117,15 +117,21 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 | Permission | Enables |
 |---|---|
 | `contacts:read` | Contacts, their activity, events, senders, domains and the suppression list |
+| `contacts:write` | Add tags and attributes to existing contacts |
 | `campaigns:read` | Campaigns and their metric reports |
 | `reports:read` | Aggregated project metrics over a date range |
 | `segments:read` | Segments and their rules |
+| `segments:write` | Create segments |
 | `templates:read` | Templates (metadata, not the email body) |
 | `automations:read` | Automations and their reports |
 
 <Tip>
-  Start with the minimum. If you only want the assistant to analyze campaign performance, `campaigns:read` and `reports:read` are enough.
+  Start with the minimum. If you only want the assistant to analyze campaign performance, `campaigns:read` and `reports:read` are enough. Grant write permissions (`:write`) only if you want the assistant to modify your data.
 </Tip>
+
+<Warning>
+  Write permissions modify your real data. None of them send email, but **adding a tag can enroll the contact into an active automation** that does send. Grant them intentionally.
+</Warning>
 
 ---
 
@@ -168,6 +174,18 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 
 </Accordion>
 
+<Accordion title="Writing — contacts:write / segments:write">
+
+These modify real data. None of them send email.
+
+| Tool | Permission | What it does |
+|---|---|---|
+| `add_tags` | `contacts:write` | Adds tags to an existing contact (merged, no duplicates). May enroll it into active automations with that trigger |
+| `set_attributes` | `contacts:write` | Adds or updates attributes on an existing contact (the rest are kept) |
+| `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
+
+</Accordion>
+
 <Accordion title="Identity — no permission">
 
 | Tool | What it does |
@@ -193,7 +211,7 @@ Your API Key (`sk_...`) gives full access to the API, including sending email, a
 </Accordion>
 
 <Accordion title="Can the assistant send email or delete data?">
-Not today. The server is read-only. When writing is enabled, it will be through separate `:write` permissions you grant explicitly, and actions with side effects (creating a campaign) will start as drafts for you to review and activate from the app.
+It does not send email or create sending campaigns: that needs a permission not available yet. With write permissions it can add tags and attributes to contacts and create segments, but it does not delete contacts or data. Each write capability is a separate `:write` permission you grant explicitly.
 </Accordion>
 
 <Accordion title="Can I have multiple keys?">

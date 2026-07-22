@@ -6,7 +6,7 @@ description: "Conecta tu cuenta de ReallyQuickEmails a Claude, Cursor u otro cli
 El **servidor MCP** de ReallyQuickEmails expone tu proyecto mediante el [Model Context Protocol](https://modelcontextprotocol.io). Conéctalo a Claude Desktop, Cursor o Claude Code y tu asistente podrá consultar tus contactos, campañas, métricas y automatizaciones respondiendo en lenguaje natural.
 
 <Info>
-  Hoy el servidor es de **solo lectura**: tu asistente puede consultar y analizar, no modificar ni enviar. La escritura (crear contactos, segmentos, campañas en borrador) y el envío llegarán en fases siguientes, siempre detrás de permisos que tú concedes.
+  Tu asistente puede **consultar** datos y, con permisos de escritura, **modificar** contactos y crear segmentos. Lo que todavía **no** puede es **enviar** correo ni crear campañas de envío: eso llega en una fase siguiente, siempre detrás de un permiso que tú concedes. Ninguna herramienta de escritura envía correo por sí sola.
 </Info>
 
 La conexión es segura por diseño:
@@ -117,15 +117,21 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 | Permiso | Habilita |
 |---|---|
 | `contacts:read` | Contactos, su actividad, eventos, remitentes, dominios y lista de supresión |
+| `contacts:write` | Agregar tags y atributos a contactos existentes |
 | `campaigns:read` | Campañas y sus reportes de métricas |
 | `reports:read` | Métricas agregadas del proyecto en un rango de fechas |
 | `segments:read` | Segmentos y sus reglas |
+| `segments:write` | Crear segmentos |
 | `templates:read` | Plantillas (metadatos, no el cuerpo del email) |
 | `automations:read` | Automatizaciones y sus reportes |
 
 <Tip>
-  Empieza con el mínimo. Si solo quieres que el asistente analice el desempeño de tus campañas, `campaigns:read` y `reports:read` bastan.
+  Empieza con el mínimo. Si solo quieres que el asistente analice el desempeño de tus campañas, `campaigns:read` y `reports:read` bastan. Los permisos de escritura (`:write`) concédelos solo si quieres que el asistente modifique tus datos.
 </Tip>
+
+<Warning>
+  Los permisos de escritura modifican tus datos reales. Ninguno envía correo, pero **agregar un tag puede inscribir al contacto en una automatización activa** que sí envíe. Concédelos con intención.
+</Warning>
 
 ---
 
@@ -168,6 +174,18 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 
 </Accordion>
 
+<Accordion title="Escritura — contacts:write / segments:write">
+
+Modifican datos reales. Ninguna envía correo.
+
+| Herramienta | Permiso | Qué hace |
+|---|---|---|
+| `add_tags` | `contacts:write` | Agrega tags a un contacto existente (unión, sin duplicados). Puede inscribirlo en automatizaciones activas con ese trigger |
+| `set_attributes` | `contacts:write` | Agrega o actualiza atributos de un contacto existente (los demás se conservan) |
+| `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
+
+</Accordion>
+
 <Accordion title="Identidad — sin permiso">
 
 | Herramienta | Qué hace |
@@ -193,7 +211,7 @@ Tu API Key (`sk_...`) da acceso completo a la API, incluido el envío de correo,
 </Accordion>
 
 <Accordion title="¿El asistente puede enviar correos o borrar datos?">
-Hoy no. El servidor es de solo lectura. Cuando se habilite la escritura, será mediante permisos `:write` separados que tendrás que conceder explícitamente, y las acciones con efecto (crear una campaña) nacerán en borrador para que tú las revises y las actives desde la app.
+No envía correo ni crea campañas de envío: eso requiere un permiso que todavía no está disponible. Con permisos de escritura sí puede agregar tags y atributos a contactos y crear segmentos, pero no borra contactos ni datos. Cada capacidad de escritura es un permiso `:write` separado que tú concedes explícitamente.
 </Accordion>
 
 <Accordion title="¿Puedo tener varias claves?">
