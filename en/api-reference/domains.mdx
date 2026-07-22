@@ -840,6 +840,95 @@ curl -X PUT https://api.reallyquickemails.com/domains/mystore.com/sender \
 
 ---
 
+## Reply domain (clean Reply-To, token-less)
+
+Configure a **branded reply domain** per project (`reply.yourdomain.com`) so the Reply-To of API sends comes out clean —`localpart@reply.yourdomain.com`— instead of the encoded token. Sending and reply resolution are automatic once verified. Without a reply domain configured, the usual token is used. How it affects the webhook: [Webhooks · reply domain](/en/api-reference/webhooks#branded-reply-domain-optional-token-less).
+
+### POST /domains/reply
+
+Registers the reply domain: verifies the identity in SES for **receiving** and returns the 2 DNS records the client must publish.
+
+#### Request Body
+
+| Field    | Type   | Required | Description                                                     |
+| -------- | ------ | -------- | --------------------------------------------------------------- |
+| `domain` | string | Yes      | The client's domain (e.g. `phrasso.com`). RQE builds `reply.phrasso.com`. |
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/reply \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "domain": "phrasso.com" }'
+```
+
+</Tab></Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "success": true,
+  "reply_domain": "reply.phrasso.com",
+  "reply_domain_status": "pending",
+  "dns_records": [
+    { "record_type": "TXT", "name": "_amazonses.reply.phrasso.com", "value": "<token>", "purpose": "ses_verification", "ttl_hint": 300 },
+    { "record_type": "MX", "name": "reply.phrasso.com", "value": "inbound-smtp.us-east-1.amazonaws.com", "priority": 10, "purpose": "reply_inbound", "ttl_hint": 300 }
+  ],
+  "message": "Publish these 2 records in the domain's DNS, then call POST /domains/reply/verify."
+}
+```
+
+The client publishes those 2 records (SES verification TXT + MX that routes replies to RQE's inbound). Then calls **verify**.
+
+### POST /domains/reply/verify
+
+Queries SES and marks the reply domain `verified` once the TXT has propagated. From then on, the project's API sends go out with the clean Reply-To.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/domains/reply/verify \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "success": true,
+  "reply_domain": "reply.phrasso.com",
+  "reply_domain_status": "verified",
+  "ses_status": "Success",
+  "can_receive": true
+}
+```
+
+`reply_domain_status`: `pending` (not yet verified) · `verified` (in use) · `failed`. `can_receive` is `true` when SES can receive for the domain.
+
+### GET /domains/reply
+
+Status and DNS records of the project's reply domain. `reply_domain: null` if none is configured.
+
+```bash
+curl https://api.reallyquickemails.com/domains/reply \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+### DELETE /domains/reply
+
+Removes the reply domain (takes it out of inbound routing, deletes the SES identity, clears the project). Sends revert to the token Reply-To.
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/domains/reply \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+---
+
 ## Email Verification (Magic Link)
 
 An alternative to full domain verification: verify an individual email as a sender without configuring DNS. A verification email is sent; clicking the link verifies the email for sending.
