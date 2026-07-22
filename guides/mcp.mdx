@@ -1,0 +1,203 @@
+---
+title: Servidor MCP
+description: "Conecta tu cuenta de ReallyQuickEmails a Claude, Cursor u otro cliente de IA y opera tu proyecto conversando."
+---
+
+El **servidor MCP** de ReallyQuickEmails expone tu proyecto mediante el [Model Context Protocol](https://modelcontextprotocol.io). Conéctalo a Claude Desktop, Cursor o Claude Code y tu asistente podrá consultar tus contactos, campañas, métricas y automatizaciones respondiendo en lenguaje natural.
+
+<Info>
+  Hoy el servidor es de **solo lectura**: tu asistente puede consultar y analizar, no modificar ni enviar. La escritura (crear contactos, segmentos, campañas en borrador) y el envío llegarán en fases siguientes, siempre detrás de permisos que tú concedes.
+</Info>
+
+La conexión es segura por diseño:
+
+- **El servidor no guarda credenciales de tu base de datos.** Autentica cada llamada con tu clave MCP y la reenvía a la API; el proyecto se resuelve desde la clave, nunca desde lo que pida el asistente. Una clave de un proyecto no puede leer otro.
+- **Cada clave lleva sus propios permisos.** El asistente solo ve y solo puede usar las herramientas que sus permisos habilitan.
+- **La revocas cuando quieras** y el acceso se corta en la siguiente llamada.
+
+---
+
+<Steps>
+
+<Step title="Crear una clave MCP">
+
+1. Entra al [dashboard](https://app.reallyquickemails.com) y selecciona tu proyecto.
+2. En el menú lateral abre **Integraciones → API Keys**.
+3. Baja hasta la sección **Claves MCP** y pulsa **Crear clave**.
+4. Ponle un nombre y marca los **permisos** que quieres conceder (ver [Permisos](#permisos)). Concede solo los que el asistente necesite.
+5. Copia la clave (`rqe_mcp_...`).
+
+<Warning>
+  La clave completa se muestra **una sola vez**. Si la pierdes, revócala y crea una nueva. No la pegues en código del lado del cliente ni en repositorios.
+</Warning>
+
+</Step>
+
+<Step title="Conectar tu cliente de IA">
+
+Usa el endpoint `https://mcp.reallyquickemails.com/mcp` con tu clave en el header `X-API-Key`.
+
+<Tabs>
+
+<Tab title="Claude Desktop">
+
+Abre **Settings → Developer → Edit Config** y agrega tu servidor. También puedes editar `claude_desktop_config.json` a mano:
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "X-API-Key": "rqe_mcp_tu_clave" }
+    }
+  }
+}
+```
+
+Reinicia Claude Desktop. El servidor aparece en el selector de herramientas.
+
+</Tab>
+
+<Tab title="Cursor">
+
+Edita `~/.cursor/mcp.json` (global) o `.cursor/mcp.json` (por proyecto):
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "X-API-Key": "rqe_mcp_tu_clave" }
+    }
+  }
+}
+```
+
+Actívalo en **Settings → MCP**.
+
+</Tab>
+
+<Tab title="Claude Code">
+
+Agrégalo con un comando:
+
+```bash
+claude mcp add reallyquickemails \
+  --transport http \
+  https://mcp.reallyquickemails.com/mcp \
+  --header "X-API-Key: rqe_mcp_tu_clave"
+```
+
+Verifícalo con `claude mcp list`.
+
+</Tab>
+
+</Tabs>
+
+</Step>
+
+<Step title="Verificar la conexión">
+
+Pídele a tu asistente algo simple, por ejemplo:
+
+> ¿A qué proyecto de ReallyQuickEmails estoy conectado?
+
+Llamará a la herramienta `whoami` y responderá con el nombre de tu proyecto y los permisos de la clave. Si en cambio ves un error de autorización, revisa que copiaste la clave completa y que no está revocada.
+
+</Step>
+
+</Steps>
+
+---
+
+## Permisos
+
+Cada clave concede uno o más permisos. El asistente **no ve** las herramientas cuya autorización no le diste, y si intenta usarlas de todos modos, la llamada se rechaza.
+
+| Permiso | Habilita |
+|---|---|
+| `contacts:read` | Contactos, su actividad, eventos, remitentes, dominios y lista de supresión |
+| `campaigns:read` | Campañas y sus reportes de métricas |
+| `reports:read` | Métricas agregadas del proyecto en un rango de fechas |
+| `segments:read` | Segmentos y sus reglas |
+| `templates:read` | Plantillas (metadatos, no el cuerpo del email) |
+| `automations:read` | Automatizaciones y sus reportes |
+
+<Tip>
+  Empieza con el mínimo. Si solo quieres que el asistente analice el desempeño de tus campañas, `campaigns:read` y `reports:read` bastan.
+</Tip>
+
+---
+
+## Herramientas disponibles
+
+<AccordionGroup>
+
+<Accordion title="Contactos — contacts:read">
+
+| Herramienta | Qué hace |
+|---|---|
+| `list_contacts` | Lista contactos con búsqueda por email o nombre |
+| `get_contact` | Un contacto por su UUID, con sus datos y segmentos |
+| `get_contact_activity` | Qué le pasó a un contacto: emails recibidos y eventos |
+| `list_events` | Eventos personalizados registrados en el proyecto |
+| `get_suppression_list` | Direcciones suprimidas que no recibirán email |
+| `list_senders` | Remitentes verificados del proyecto |
+| `list_domains` | Dominios de envío y su estado de autenticación |
+
+</Accordion>
+
+<Accordion title="Campañas — campaigns:read">
+
+| Herramienta | Qué hace |
+|---|---|
+| `list_campaigns` | Campañas con su estado y contadores |
+| `get_campaign_report` | Métricas de una campaña: enviados, entregados, aperturas, clics, rebotes |
+
+</Accordion>
+
+<Accordion title="Métricas, segmentos, plantillas y automatizaciones">
+
+| Herramienta | Permiso | Qué hace |
+|---|---|---|
+| `get_metrics` | `reports:read` | Métricas agregadas del proyecto en un rango |
+| `list_segments` | `segments:read` | Segmentos con su tamaño y su regla |
+| `list_templates` | `templates:read` | Plantillas del proyecto (metadatos) |
+| `list_automations` | `automations:read` | Automatizaciones y si están activas, en pausa o borrador |
+| `get_automation_report` | `automations:read` | Desempeño de una automatización: enviados, abiertos, clics |
+
+</Accordion>
+
+<Accordion title="Identidad — sin permiso">
+
+| Herramienta | Qué hace |
+|---|---|
+| `whoami` | El proyecto al que pertenece la clave y sus permisos. Cualquier clave válida puede llamarla |
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Revocar una clave
+
+En **Integraciones → API Keys → Claves MCP**, pulsa **Revocar** en la clave. El acceso se corta en la siguiente llamada; el asistente que la use recibirá un error de autorización. La clave revocada queda listada para tu registro, sin poder reactivarse.
+
+## Preguntas frecuentes
+
+<AccordionGroup>
+
+<Accordion title="¿En qué se diferencia de mi API Key normal?">
+Tu API Key (`sk_...`) da acceso completo a la API, incluido el envío de correo, y está pensada para tu propio backend. La clave MCP (`rqe_mcp_...`) tiene permisos granulares y está pensada para conectar un asistente de IA de terceros con exactamente el acceso que decidas. Nunca pegues tu `sk_...` en un cliente de IA.
+</Accordion>
+
+<Accordion title="¿El asistente puede enviar correos o borrar datos?">
+Hoy no. El servidor es de solo lectura. Cuando se habilite la escritura, será mediante permisos `:write` separados que tendrás que conceder explícitamente, y las acciones con efecto (crear una campaña) nacerán en borrador para que tú las revises y las actives desde la app.
+</Accordion>
+
+<Accordion title="¿Puedo tener varias claves?">
+Sí. Es buena práctica una clave por cliente o por uso, cada una con el mínimo de permisos, para poder revocar una sin afectar al resto.
+</Accordion>
+
+</AccordionGroup>
