@@ -6,7 +6,7 @@ description: "Connect your ReallyQuickEmails account to Claude, Cursor or anothe
 The ReallyQuickEmails **MCP server** exposes your project through the [Model Context Protocol](https://modelcontextprotocol.io). Connect it to Claude Desktop, Cursor or Claude Code and your assistant can query your contacts, campaigns, metrics and automations, answering in natural language.
 
 <Info>
-  Your assistant can **query** data and, with write permissions, **modify** contacts and create segments. What it still **cannot** do is **send** email or create sending campaigns: that arrives in a later phase, always behind a permission you grant. No write tool sends email on its own.
+  Your assistant can **query** data, **modify** contacts and segments, **create draft campaigns** (which you review and send from the app), **enroll contacts into automations**, and even **send email** — each capability behind its own permission, granted by you when creating the key. **Building complete automations by chat is coming soon.**
 </Info>
 
 The connection is secure by design:
@@ -117,20 +117,23 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 | Permission | Enables |
 |---|---|
 | `contacts:read` | Contacts, their activity, events, senders, domains and the suppression list |
-| `contacts:write` | Add tags and attributes to existing contacts |
+| `contacts:write` | Create/update contacts, tags, attributes, events and suppression |
 | `campaigns:read` | Campaigns and their metric reports |
+| `campaigns:write` | Create campaigns **as drafts** (never sends them) |
 | `reports:read` | Aggregated project metrics over a date range |
 | `segments:read` | Segments and their rules |
 | `segments:write` | Create segments |
 | `templates:read` | Templates (metadata, not the email body) |
 | `automations:read` | Automations and their reports |
+| `automations:write` | Enroll contacts into active automations |
+| `sends:execute` | **Send real email.** The most sensitive permission — grant it only if you want the assistant to send on your behalf |
 
 <Tip>
   Start with the minimum. If you only want the assistant to analyze campaign performance, `campaigns:read` and `reports:read` are enough. Grant write permissions (`:write`) only if you want the assistant to modify your data.
 </Tip>
 
 <Warning>
-  Write permissions modify your real data. None of them send email, but **adding a tag can enroll the contact into an active automation** that does send. Grant them intentionally.
+  Write permissions modify your real data. Only `sends:execute` sends email directly, but keep in mind that **adding a tag, tracking an event or enrolling into an active automation can result in a send** if you have flows configured with those triggers. Grant them intentionally.
 </Warning>
 
 ---
@@ -174,15 +177,32 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 
 </Accordion>
 
-<Accordion title="Writing — contacts:write / segments:write">
+<Accordion title="Writing — contacts:write / segments:write / campaigns:write / automations:write">
 
-These modify real data. None of them send email.
+These modify real data. None of them send email directly, but the ones marked can trigger active automations that do send.
 
 | Tool | Permission | What it does |
 |---|---|---|
-| `add_tags` | `contacts:write` | Adds tags to an existing contact (merged, no duplicates). May enroll it into active automations with that trigger |
+| `upsert_contacts` | `contacts:write` | Creates or updates up to 1000 contacts by email, with attributes and segments. May trigger new-contact flows |
+| `add_tags` | `contacts:write` | Adds tags to an existing contact (merged, no duplicates). May trigger tag-based flows |
 | `set_attributes` | `contacts:write` | Adds or updates attributes on an existing contact (the rest are kept) |
+| `track_event` | `contacts:write` | Tracks a custom event (purchase, signup…). May trigger event-based flows |
+| `suppress_email` | `contacts:write` | Adds addresses to the suppression list (they stop receiving email) |
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
+| `create_campaign` | `campaigns:write` | Creates a campaign **always as a draft** — you review, complete and send it from the app |
+| `enroll_in_automation` | `automations:write` | Enrolls a contact into an **active** automation — the flow runs immediately and may email them |
+
+</Accordion>
+
+<Accordion title="Sending — sends:execute">
+
+| Tool | What it does |
+|---|---|
+| `send_email` | **Sends a real email immediately** (up to 50 recipients), from a verified sender of the project. Supports `idempotency_key`: the same key within 24h returns the previous result instead of sending again |
+
+<Warning>
+  `send_email` is not a draft and cannot be undone. Grant `sends:execute` only to keys whose assistant should send on your behalf, and revoke it when no longer needed.
+</Warning>
 
 </Accordion>
 
@@ -211,7 +231,11 @@ Your API Key (`sk_...`) gives full access to the API, including sending email, a
 </Accordion>
 
 <Accordion title="Can the assistant send email or delete data?">
-It does not send email or create sending campaigns: that needs a permission not available yet. With write permissions it can add tags and attributes to contacts and create segments, but it does not delete contacts or data. Each write capability is a separate `:write` permission you grant explicitly.
+It can send email **only** if you granted `sends:execute` — without that permission it does not even see the send tool. Campaigns it creates are always drafts, and you send them from the app. It does not delete contacts or data: there are no delete tools. Each capability is a separate permission you grant explicitly when creating the key.
+</Accordion>
+
+<Accordion title="Can it build complete automations (flows)?">
+Not yet — that is **coming soon**. Today it can enroll contacts into automations you already built (with `automations:write`) and check their performance, but designing the flow itself (nodes, triggers, conditions) happens in the app.
 </Accordion>
 
 <Accordion title="Can I have multiple keys?">
