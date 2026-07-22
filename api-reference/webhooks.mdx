@@ -242,6 +242,24 @@ Los clientes (Gmail, Outlook, Apple Mail) muestran el nombre del remitente, no l
 
 **No dispara** para envíos desde la UI de RQE (campañas, automatizaciones, "enviar prueba"): esos usan el Reply-To del sender humano para que reciba en su inbox.
 
+### Reply domain branded (opcional, sin token)
+
+Un proyecto puede configurar un **dominio de reply propio** (`reply.tudominio.com`) para que el Reply-To salga limpio y branded, sin el token codificado:
+
+```
+Reply-To: "Tu Empresa" <soporte@reply.tudominio.com>
+```
+
+En vez del token, **el dominio identifica tu proyecto** y el **`Message-ID` identifica el hilo** (headers `In-Reply-To` / `References`). El evento `email.inbound` que recibes es **idéntico**: sigues leyendo `activity_id` y `thread_id` del payload, no la dirección. El token siempre fue plomería interna de RQE, no algo que tu integración parsee — así que activar un reply domain **no cambia tu código**.
+
+<Info>
+  Se habilita por proyecto publicando 2 registros DNS (un TXT de verificación SES en `_amazonses.reply.tudominio.com` + un MX `reply.tudominio.com` → `inbound-smtp.us-east-1.amazonaws.com`) y coordinando con RQE. La configuración self-service está en camino. Sin reply domain configurado, se usa el token de siempre.
+</Info>
+
+<Warning>
+  Con reply domain el hilo se resuelve por los headers de Message-ID. En casos raros —un cliente de correo que borra esos headers, o un correo **nuevo** enviado directo a la dirección que no es una respuesta— el evento llega con `thread_id: null`. Trátalo como un inbound nuevo.
+</Warning>
+
 ### Body del payload inbound
 
 ```json
