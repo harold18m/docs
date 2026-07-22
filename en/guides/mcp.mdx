@@ -1,0 +1,203 @@
+---
+title: MCP Server
+description: "Connect your ReallyQuickEmails account to Claude, Cursor or another AI client and operate your project by chatting."
+---
+
+The ReallyQuickEmails **MCP server** exposes your project through the [Model Context Protocol](https://modelcontextprotocol.io). Connect it to Claude Desktop, Cursor or Claude Code and your assistant can query your contacts, campaigns, metrics and automations, answering in natural language.
+
+<Info>
+  Today the server is **read-only**: your assistant can query and analyze, not modify or send. Writing (creating contacts, segments, draft campaigns) and sending will arrive in later phases, always behind permissions you grant.
+</Info>
+
+The connection is secure by design:
+
+- **The server holds no database credentials.** It authenticates each call with your MCP key and forwards it to the API; the project is resolved from the key, never from what the assistant asks for. A key from one project cannot read another.
+- **Each key carries its own permissions.** The assistant only sees, and can only use, the tools its permissions enable.
+- **You can revoke it any time** and access is cut on the next call.
+
+---
+
+<Steps>
+
+<Step title="Create an MCP key">
+
+1. Open the [dashboard](https://app.reallyquickemails.com) and select your project.
+2. In the sidebar go to **Integrations → API Keys**.
+3. Scroll to the **MCP Keys** section and click **Create key**.
+4. Give it a name and check the **permissions** you want to grant (see [Permissions](#permissions)). Grant only what the assistant needs.
+5. Copy the key (`rqe_mcp_...`).
+
+<Warning>
+  The full key is shown **only once**. If you lose it, revoke it and create a new one. Never paste it into client-side code or repositories.
+</Warning>
+
+</Step>
+
+<Step title="Connect your AI client">
+
+Use the endpoint `https://mcp.reallyquickemails.com/mcp` with your key in the `X-API-Key` header.
+
+<Tabs>
+
+<Tab title="Claude Desktop">
+
+Open **Settings → Developer → Edit Config** and add your server. You can also edit `claude_desktop_config.json` directly:
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "X-API-Key": "rqe_mcp_your_key" }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The server shows up in the tools picker.
+
+</Tab>
+
+<Tab title="Cursor">
+
+Edit `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per project):
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "X-API-Key": "rqe_mcp_your_key" }
+    }
+  }
+}
+```
+
+Enable it under **Settings → MCP**.
+
+</Tab>
+
+<Tab title="Claude Code">
+
+Add it with one command:
+
+```bash
+claude mcp add reallyquickemails \
+  --transport http \
+  https://mcp.reallyquickemails.com/mcp \
+  --header "X-API-Key: rqe_mcp_your_key"
+```
+
+Verify with `claude mcp list`.
+
+</Tab>
+
+</Tabs>
+
+</Step>
+
+<Step title="Verify the connection">
+
+Ask your assistant something simple, for example:
+
+> Which ReallyQuickEmails project am I connected to?
+
+It will call the `whoami` tool and answer with your project name and the key's permissions. If you see an authorization error instead, check that you copied the full key and that it is not revoked.
+
+</Step>
+
+</Steps>
+
+---
+
+## Permissions
+
+Each key grants one or more permissions. The assistant **does not see** the tools it wasn't authorized for, and if it tries to use them anyway, the call is rejected.
+
+| Permission | Enables |
+|---|---|
+| `contacts:read` | Contacts, their activity, events, senders, domains and the suppression list |
+| `campaigns:read` | Campaigns and their metric reports |
+| `reports:read` | Aggregated project metrics over a date range |
+| `segments:read` | Segments and their rules |
+| `templates:read` | Templates (metadata, not the email body) |
+| `automations:read` | Automations and their reports |
+
+<Tip>
+  Start with the minimum. If you only want the assistant to analyze campaign performance, `campaigns:read` and `reports:read` are enough.
+</Tip>
+
+---
+
+## Available tools
+
+<AccordionGroup>
+
+<Accordion title="Contacts — contacts:read">
+
+| Tool | What it does |
+|---|---|
+| `list_contacts` | Lists contacts with search by email or name |
+| `get_contact` | A single contact by its UUID, with its data and segments |
+| `get_contact_activity` | What happened to a contact: emails received and events |
+| `list_events` | Custom events tracked for the project |
+| `get_suppression_list` | Suppressed addresses that will not receive email |
+| `list_senders` | Verified sender identities of the project |
+| `list_domains` | Sending domains and their authentication status |
+
+</Accordion>
+
+<Accordion title="Campaigns — campaigns:read">
+
+| Tool | What it does |
+|---|---|
+| `list_campaigns` | Campaigns with their status and counters |
+| `get_campaign_report` | Metrics of one campaign: sent, delivered, opens, clicks, bounces |
+
+</Accordion>
+
+<Accordion title="Metrics, segments, templates and automations">
+
+| Tool | Permission | What it does |
+|---|---|---|
+| `get_metrics` | `reports:read` | Aggregated project metrics over a range |
+| `list_segments` | `segments:read` | Segments with their size and rule |
+| `list_templates` | `templates:read` | Project templates (metadata) |
+| `list_automations` | `automations:read` | Automations and whether they are active, paused or draft |
+| `get_automation_report` | `automations:read` | Performance of one automation: sent, opened, clicked |
+
+</Accordion>
+
+<Accordion title="Identity — no permission">
+
+| Tool | What it does |
+|---|---|
+| `whoami` | The project the key belongs to and its permissions. Any valid key can call it |
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Revoke a key
+
+Under **Integrations → API Keys → MCP Keys**, click **Revoke** on the key. Access is cut on the next call; an assistant using it will get an authorization error. The revoked key stays listed for your records and cannot be reactivated.
+
+## FAQ
+
+<AccordionGroup>
+
+<Accordion title="How is this different from my regular API Key?">
+Your API Key (`sk_...`) gives full access to the API, including sending email, and is meant for your own backend. The MCP key (`rqe_mcp_...`) has granular permissions and is meant to connect a third-party AI assistant with exactly the access you decide. Never paste your `sk_...` into an AI client.
+</Accordion>
+
+<Accordion title="Can the assistant send email or delete data?">
+Not today. The server is read-only. When writing is enabled, it will be through separate `:write` permissions you grant explicitly, and actions with side effects (creating a campaign) will start as drafts for you to review and activate from the app.
+</Accordion>
+
+<Accordion title="Can I have multiple keys?">
+Yes. One key per client or per use, each with the minimum permissions, is good practice so you can revoke one without affecting the rest.
+</Accordion>
+
+</AccordionGroup>
