@@ -929,6 +929,110 @@ curl -X DELETE https://api.reallyquickemails.com/domains/reply \
 
 ---
 
+## Tracking domain (links de click con tu dominio)
+
+Envuelve los links de click-tracking con **tu propio subdominio** (`links.tudominio.com`) en vez del compartido de RQE. Aísla la reputación del tracking y alinea los links con tu `From`. Se configura con un solo registro **CNAME**.
+
+<Info>
+El tracking domain **se cambia, nunca se borra**: los links de los emails ya enviados dependen de que el dominio siga resolviendo. Por eso no hay endpoint `DELETE` — para migrar, publica el CNAME nuevo y llama a `PUT` con el nuevo dominio.
+</Info>
+
+Estos endpoints cuelgan de `/api/projects/:projectId`. El `:projectId` es el **UUID de tu proyecto** —el `project_id` que devuelve cualquier respuesta de envío— y debe coincidir con el proyecto de tu API key.
+
+### GET /api/projects/:projectId/tracking-domain
+
+Estado actual del tracking domain del proyecto.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/api/projects/:projectId/tracking-domain \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "domain": "links.tudominio.com",
+  "status": "verified",
+  "verified_at": "2026-07-20T12:00:00.000Z",
+  "cname": { "name": "links.tudominio.com", "target": "track.reallyquickemails.com" }
+}
+```
+
+`domain`, `status` y `cname` son `null` si no hay ninguno configurado.
+
+### PUT /api/projects/:projectId/tracking-domain
+
+Setea o cambia el tracking domain. Queda en `pending` hasta verificar. Debe ser un subdominio propio (ej. `links.tudominio.com`), nunca un dominio de RQE.
+
+#### Request Body
+
+| Campo    | Tipo   | Requerido | Descripción                                    |
+| -------- | ------ | --------- | ---------------------------------------------- |
+| `domain` | string | Sí        | Subdominio propio, ej. `links.tudominio.com`.  |
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X PUT https://api.reallyquickemails.com/api/projects/:projectId/tracking-domain \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "domain": "links.tudominio.com" }'
+```
+
+</Tab></Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "domain": "links.tudominio.com",
+  "status": "pending",
+  "cname": { "name": "links.tudominio.com", "target": "track.reallyquickemails.com" },
+  "tls_registered": true
+}
+```
+
+Publica el **CNAME** `links.tudominio.com → track.reallyquickemails.com` en tu DNS y luego llama a **verify**.
+
+| Código | Error                     | Motivo                                                     |
+| ------ | ------------------------- | --------------------------------------------------------- |
+| `400`  | `INVALID_DOMAIN`          | No es un subdominio válido, o es un dominio de RQE.        |
+| `502`  | `TLS_REGISTRATION_FAILED` | No se pudo registrar el dominio para emitir TLS. Reintenta. |
+
+### POST /api/projects/:projectId/tracking-domain/verify
+
+Chequea el DNS y marca `verified` si el CNAME ya resuelve a nuestro target (soporta el CNAME flattening de Cloudflare comparando registros A).
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/api/projects/:projectId/tracking-domain/verify \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "domain": "links.tudominio.com",
+  "status": "verified",
+  "verified": true,
+  "detail": "cname",
+  "cname": { "name": "links.tudominio.com", "target": "track.reallyquickemails.com" }
+}
+```
+
+`verified: false` con `status: "pending"` si el DNS aún no propagó (`detail` explica el motivo). Responde `404 NO_DOMAIN` si no hay tracking domain configurado.
+
+---
+
 ## Verificacion de Email (Magic Link)
 
 Alternativa a la verificación de dominio completo: verifica un email individual como remitente sin configurar DNS. Se envía un email de verificación; al hacer clic en el enlace, el email queda verificado para enviar.
