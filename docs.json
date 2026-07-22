@@ -21,6 +21,7 @@
             "group": "Guías",
             "pages": [
               "guides/quickstart",
+              "guides/partner-quickstart",
               "guides/sdk-nodejs",
               "guides/api-keys",
               "guides/mcp",
@@ -64,6 +65,7 @@
             "group": "Guides",
             "pages": [
               "en/guides/quickstart",
+              "en/guides/partner-quickstart",
               "en/guides/sdk-nodejs",
               "en/guides/api-keys",
               "en/guides/mcp",

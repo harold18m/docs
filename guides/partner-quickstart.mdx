@@ -1,0 +1,68 @@
+---
+title: Partner quickstart
+description: "Integra RQE como plataforma para tus propios clientes: crea, configura y opera cada cliente por API."
+---
+
+Esta guía es para **partners**: integradores que ofrecen email a **sus propios clientes** usando RQE por debajo (patrón reseller). Cada cliente es un proyecto RQE independiente —con sus datos, su dominio y sus estadísticas aislados— y tú los creas y operas por API con una sola **partner-key**.
+
+<Info>
+  **Modelo:** una organización de partner contiene N proyectos-cliente. Tu **partner-key** (`sk_partner_...`) crea y lista proyectos dentro de tu org; la **API key de cada cliente** (`sk_proj_...`) opera ese cliente en detalle. Referencia completa: [Partner / Provisioning](/api-reference/partner).
+</Info>
+
+## Antes de empezar
+
+Necesitas tu **partner-key** (`sk_partner_...`). La emite RQE al habilitar tu cuenta de partner — pídela por tu canal con el equipo. Es dedicada y revocable, y solo puede operar dentro de tu organización.
+
+## El flujo, de punta a punta
+
+<Steps>
+  <Step title="Crea el proyecto del cliente">
+    Con tu partner-key, crea un proyecto por cada cliente. Recibes su `api_key` (`sk_proj_`), que es la credencial para operarlo.
+
+    ```bash
+    curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
+      -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{ "name": "Phrasso" }'
+    ```
+
+    ```json
+    { "project_id": "…", "slug": "phrasso", "api_key": "sk_proj_…" }
+    ```
+
+    Guarda la `api_key` de forma segura — se muestra una sola vez.
+  </Step>
+  <Step title="Configura el dominio del cliente">
+    Con la `api_key` del cliente, registra su [reply domain limpio](/api-reference/domains#reply-domain-reply-to-limpio-sin-token) (`reply.cliente.com`, respuestas sin token) y/o su [tracking domain](/api-reference/domains#tracking-domain-links-de-click-con-tu-dominio). Publicas los registros DNS que te devuelve y llamas a verify.
+  </Step>
+  <Step title="Envía en su nombre">
+    Con la misma `api_key`, [envía](/api-reference/public-api) transaccional o en lote, gestiona [contactos](/api-reference/leads) y [eventos](/api-reference/events), y recibe [webhooks](/api-reference/webhooks) — todo aislado a ese cliente.
+  </Step>
+  <Step title="Gestiona tu cartera (opcional)">
+    Lista y mide todos tus clientes con `GET /v1/partner/projects`, o desde un agente de IA con el [MCP en modo partner](/guides/mcp#modo-partner-gestiona-tu-cartera-de-clientes) (`list_clients`, `create_client`, `get_client_stats` con tu partner-key).
+  </Step>
+</Steps>
+
+## Con un agente de IA (MCP)
+
+Si operas con un agente, conéctalo al MCP con tu partner-key y gestiona la cartera en lenguaje natural:
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails-partner": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "Authorization": "Bearer sk_partner_xxxxxxxxxxxx" }
+    }
+  }
+}
+```
+
+Hoy el agente puede **organizar** la cartera (listar clientes, crearlos, ver métricas). Ver [MCP · modo partner](/guides/mcp#modo-partner-gestiona-tu-cartera-de-clientes).
+
+## Referencia
+
+- [Partner / Provisioning](/api-reference/partner) — `POST/GET/DELETE /v1/partner/projects`.
+- [Dominios](/api-reference/domains) — reply domain y tracking domain por cliente.
+- [API pública](/api-reference/public-api) — envío por cliente.
+- [MCP](/guides/mcp) — modo partner y modo proyecto.
