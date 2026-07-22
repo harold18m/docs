@@ -101,6 +101,107 @@ If no `timezone` is provided, the project's default time zone (`default_timezone
 
 Learn more in [Schedule Sends](/en/guides/scheduling).
 
+## Manage a Scheduled Send
+
+A `POST /send-email` with `scheduled_at` returns a `scheduled_send_id` (see [the scheduled send response](#scheduled-send-with-attachments)). With that ID you can inspect, reschedule, or cancel the send while it is still in `pending` status.
+
+### GET /v1/scheduled-sends/:id
+
+Returns the status of the scheduled send.
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/scheduled-sends/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "pending",
+  "scheduled_for": "2025-03-17T12:00:00.000Z",
+  "timezone": "America/Lima",
+  "recipient_email": "customer@example.com",
+  "sender_email": "sales@mystore.com",
+  "subject": "Your order is on its way",
+  "created_at": "2025-03-10T18:22:41.000Z",
+  "updated_at": "2025-03-10T18:22:41.000Z"
+}
+```
+
+| Status | Description |
+|---|---|
+| `pending` | Not sent yet. Can be rescheduled or cancelled. |
+| `processing` | The engine is processing it. |
+| `sent` | Already went out. |
+| `failed` | The send failed. |
+| `cancelled` | Cancelled. |
+
+Responds `404` `NOT_FOUND` if the ID does not exist in the project.
+
+### PATCH /v1/scheduled-sends/:id
+
+Reschedules the send to a new date. Only while the status is `pending`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `scheduled_at` | string | Yes | New ISO 8601 date. Must be in the future. |
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X PATCH https://api.reallyquickemails.com/v1/scheduled-sends/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "scheduled_at": "2025-03-20T14:00:00Z" }'
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK` — the updated row, with the same columns as the `GET`.
+
+| Code | Description |
+|---|---|
+| `400` | `INVALID_INPUT` — invalid `scheduled_at` or a date in the past. |
+| `409` | `NOT_PENDING` — the send already went out, is in progress, or was cancelled. |
+
+### DELETE /v1/scheduled-sends/:id
+
+Cancels the send if it is still `pending`.
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/scheduled-sends/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "cancelled": true
+}
+```
+
+| Code | Description |
+|---|---|
+| `409` | `NOT_PENDING` — the send already went out, is in progress, or was cancelled. |
+
 ## Dry Run
 
 With `"dry_run": true`, the endpoint renders the email **without sending it**: it does not queue, log activity, or consume quota. Useful for validating the payload and variables before an actual send.

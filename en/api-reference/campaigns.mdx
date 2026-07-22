@@ -137,6 +137,134 @@ To create the campaign anyway, resend the request with `"confirmDuplicate": true
 
 ---
 
+## GET /v1/campaigns
+
+Lists the project's campaigns.
+
+### Query params
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `status` | string | No | Filters by status. See [Campaign statuses](#campaign-statuses). |
+| `page` | number | No | Page. Default: `1`. |
+| `per_page` | number | No | Results per page. Default: `50`. Maximum: `200`. |
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl "https://api.reallyquickemails.com/v1/campaigns?status=completed&per_page=50" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "campaigns": [
+    {
+      "id": "7e8d9c0b-1234-4abc-9def-012345678901",
+      "name": "June Newsletter",
+      "subject": "June updates",
+      "status": "completed",
+      "created_at": "2026-06-01T15:00:00.000Z",
+      "scheduled_for": null,
+      "started_at": "2026-06-01T15:01:12.000Z",
+      "completed_at": "2026-06-01T16:20:45.000Z",
+      "total_recipients": 5000,
+      "emails_sent": 4987,
+      "emails_failed": 13
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 3
+  }
+}
+```
+
+`status` takes the values from [Campaign statuses](#campaign-statuses): `initializing`, `pending`, `processing`, `rate_limited`, `paused`, `completed`, `failed`, `cancelled`.
+
+---
+
+## GET /v1/campaigns/:id
+
+Returns a campaign's detail with its metrics.
+
+**Response** `200 OK`
+
+```json
+{
+  "campaign": {
+    "id": "7e8d9c0b-1234-4abc-9def-012345678901",
+    "name": "June Newsletter",
+    "subject": "June updates",
+    "status": "completed",
+    "created_at": "2026-06-01T15:00:00.000Z",
+    "scheduled_for": null,
+    "started_at": "2026-06-01T15:01:12.000Z",
+    "completed_at": "2026-06-01T16:20:45.000Z",
+    "total_recipients": 5000,
+    "emails_sent": 4987,
+    "emails_failed": 13
+  },
+  "metrics": {
+    "sent": 4987,
+    "delivered": 4901,
+    "opened": 2130,
+    "clicked": 486,
+    "bounced": 72,
+    "complained": 2
+  }
+}
+```
+
+The `campaign` object carries the same fields as the `GET /v1/campaigns` list.
+
+| Code | Error |
+|---|---|
+| `404` | `NOT_FOUND` — the campaign does not exist in the project. |
+
+---
+
+## POST /v1/campaigns/:id/cancel
+
+Cancels a scheduled or in-progress campaign.
+
+<Tabs>
+<Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/campaigns/7e8d9c0b-1234-4abc-9def-012345678901/cancel \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+</Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "id": "7e8d9c0b-1234-4abc-9def-012345678901",
+  "status": "cancelled"
+}
+```
+
+| Code | Error |
+|---|---|
+| `409` | `NOT_CANCELLABLE` — the campaign is already completed, failed, or cancelled. |
+
+<Info>
+  Cancellation is a soft cutoff: a campaign in mid-send stops on the engine's next cycle, and a handful of emails already materialized in the queue may still go out in that window. A scheduled campaign that has not started yet sends nothing.
+</Info>
+
+---
+
 ## Campaigns from the Dashboard
 
 The Dashboard offers a 5-step wizard to create and send campaigns without code.

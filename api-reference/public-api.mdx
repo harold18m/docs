@@ -728,6 +728,120 @@ Con `"dry_run": true` la API devuelve una previsualización, sin encolar emails 
 | `401`  | API Key inválida o no proporcionada.                                    |
 | `500`  | `Failed to create activity records` / `Failed to process batch`         |
 
+### Gestionar un batch programado
+
+Un batch creado con `scheduled_at` en el futuro se puede consultar, reprogramar o cancelar mientras no haya salido. Usa el `batch_id` que devolvió `POST /v1/send-batch`, con el mismo Bearer token `sk_proj_...`.
+
+#### GET /v1/send-batch/:batchId
+
+Devuelve el estado de un batch programado que aún no salió.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/send-batch/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "batch_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "pending": 120,
+  "cancellable": true
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `batch_id` | string | UUID del batch. |
+| `pending` | number | Jobs aún en cola con delay. `0` = el batch ya salió o se canceló. |
+| `cancellable` | boolean | `true` mientras queden jobs pendientes que se puedan cancelar. |
+
+#### PATCH /v1/send-batch/:batchId
+
+Reprograma un batch pendiente a una nueva fecha.
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `scheduled_at` | string | Si | Nueva fecha ISO 8601. Debe estar en el futuro. |
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X PATCH https://api.reallyquickemails.com/v1/send-batch/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "scheduled_at": "2026-08-01T10:00:00Z" }'
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "batch_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "rescheduled": 120,
+  "scheduled_for": "2026-08-01T10:00:00.000Z"
+}
+```
+
+`rescheduled` es la cantidad de jobs reprogramados a la nueva fecha.
+
+| Código | Descripción |
+| ------ | ----------- |
+| `400`  | `INVALID_INPUT` — `scheduled_at` inválido o en el pasado. |
+| `404`  | `NOT_FOUND` — el batch ya salió, fue cancelado o no existe. |
+
+#### DELETE /v1/send-batch/:batchId
+
+Cancela un batch programado **antes** de que salga.
+
+<Tabs>
+
+<Tab title="cURL">
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/send-batch/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+</Tab>
+
+</Tabs>
+
+**Respuesta** `200 OK`
+
+```json
+{
+  "batch_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "cancelled": 120,
+  "activities_updated": 120
+}
+```
+
+`cancelled` es la cantidad de jobs quitados de la cola; `activities_updated`, los registros de actividad marcados como `cancelled`.
+
+| Código | Descripción |
+| ------ | ----------- |
+| `404`  | `NOT_FOUND` — el batch ya salió, fue cancelado o no existe. |
+
+<Warning>
+  Estos endpoints solo aplican a batches con `scheduled_at` en el futuro que aún no salieron. Un batch inmediato (sin `scheduled_at`) se encola al instante y no se puede cancelar. Las activities de un batch cancelado quedan con estado `cancelled` y el motivo en `error_code`/`error_message`.
+</Warning>
+
 ---
 
 ## Reply-To Automatico (Inbound Email)
