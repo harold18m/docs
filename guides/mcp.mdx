@@ -218,6 +218,31 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 
 ---
 
+## Modo partner (gestiona tu cartera de clientes)
+
+Si eres un **partner** que administra varios clientes (cada uno un proyecto RQE), puedes conectar el MCP con tu **partner-key** (`sk_partner_...`) en vez de una key de proyecto. En ese modo, **una sola conexión** opera a nivel organización y expone 3 herramientas para gestionar tu cartera:
+
+| Herramienta | Qué hace |
+| ----------- | -------- |
+| `list_clients` | Lista tus proyectos-cliente (id, nombre, slug, estado). |
+| `create_client` | Crea un proyecto-cliente nuevo y devuelve su `api_key` (`sk_proj_`) para operarlo. |
+| `get_client_stats` | Métricas 30 días (envíos, entregas, aperturas, clics) de un cliente. |
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails-partner": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "Authorization": "Bearer sk_partner_xxxxxxxxxxxx" }
+    }
+  }
+}
+```
+
+<Info>
+  El modo partner opera **por organización**: `list_clients`/`get_client_stats` solo ven proyectos de tu org, y `create_client` los crea dentro de ella. Para operar un cliente en detalle (enviar, contactos, campañas), usa su `api_key` de proyecto con el MCP normal. Detalle de los endpoints en [Partner / Provisioning](/api-reference/partner).
+</Info>
+
 ## Revocar una clave
 
 En **Integraciones → API Keys → Claves MCP**, pulsa **Revocar** en la clave. El acceso se corta en la siguiente llamada; el asistente que la use recibirá un error de autorización. La clave revocada queda listada para tu registro, sin poder reactivarse.

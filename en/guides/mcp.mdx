@@ -218,6 +218,31 @@ These modify real data. None of them send email directly, but the ones marked ca
 
 ---
 
+## Partner mode (manage your client portfolio)
+
+If you're a **partner** managing several clients (each one an RQE project), you can connect the MCP with your **partner key** (`sk_partner_...`) instead of a project key. In that mode, **a single connection** operates at the organization level and exposes 3 tools to manage your portfolio:
+
+| Tool | What it does |
+| ---- | ------------ |
+| `list_clients` | Lists your client projects (id, name, slug, status). |
+| `create_client` | Creates a new client project and returns its `api_key` (`sk_proj_`) to operate it. |
+| `get_client_stats` | 30-day metrics (sent, delivered, opens, clicks) for one client. |
+
+```json
+{
+  "mcpServers": {
+    "reallyquickemails-partner": {
+      "url": "https://mcp.reallyquickemails.com/mcp",
+      "headers": { "Authorization": "Bearer sk_partner_xxxxxxxxxxxx" }
+    }
+  }
+}
+```
+
+<Info>
+  Partner mode operates **per organization**: `list_clients`/`get_client_stats` only see projects in your org, and `create_client` creates them inside it. To operate a client in detail (send, contacts, campaigns), use its project `api_key` with the regular MCP. Endpoint details in [Partner / Provisioning](/en/api-reference/partner).
+</Info>
+
 ## Revoke a key
 
 Under **Integrations → API Keys → MCP Keys**, click **Revoke** on the key. Access is cut on the next call; an assistant using it will get an authorization error. The revoked key stays listed for your records and cannot be reactivated.
