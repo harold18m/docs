@@ -7,7 +7,9 @@ description: "Envía un email de forma inmediata o programada, con plantillas y 
 
 Encola un correo para envío inmediato o lo programa para una fecha futura.
 
-> **API avanzada** (`recipient`/`sender`/`html`) — la única con envío programado, plantillas y `dry_run`. Para integraciones simples, la [API v1](/api-reference/public-api) usa nombres REST y contrato estable.
+<Info>
+  **API avanzada** (`recipient`/`sender`/`html`) — la única con envío programado, plantillas y `dry_run`. Para integraciones simples, la [API v1](/api-reference/public-api) usa nombres REST y contrato estable.
+</Info>
 
 ## Autenticacion
 
@@ -185,6 +187,31 @@ else console.log('Encolado:', data.email_id);
 ```
 
 </Tab>
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/send-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "html": "<h1>Hola {{nombre}}</h1><p>Tu pedido #{{pedido}} está en camino.</p>",
+        "subject": "Tu pedido está en camino",
+        "recipient": "cliente@ejemplo.com",
+        "sender": "ventas@mitienda.com",
+        "senderName": "Mi Tienda",
+        "data": {
+            "nombre": "Juan",
+            "pedido": "12345",
+        },
+        "email_type": "transactional",
+    },
+)
+print(resp.json())
+```
+
+</Tab>
 </Tabs>
 
 **Respuesta** `200 OK`
@@ -261,7 +288,42 @@ const { data, error } = await rqe.emails.send({
 });
 ```
 
-> En el SDK los adjuntos se envían como `content` en Base64 con `content_type` (snake_case); el campo `url` solo está disponible vía API directa.
+<Note>
+  En el SDK los adjuntos se envían como `content` en Base64 con `content_type` (snake_case); el campo `url` solo está disponible vía API directa.
+</Note>
+
+</Tab>
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/send-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "subject": "Reporte mensual - Marzo 2025",
+        "recipient": ["gerente@empresa.com", "director@empresa.com"],
+        "sender": "reportes@empresa.com",
+        "senderName": "Sistema de Reportes",
+        "templateId": "reporte-mensual",
+        "data": {
+            "mes": "Marzo",
+            "anio": "2025",
+        },
+        "scheduled_at": "next monday at 9am",
+        "timezone": "America/Santiago",
+        "attachments": [
+            {
+                "filename": "reporte-marzo-2025.pdf",
+                "url": "https://storage.ejemplo.com/reportes/marzo-2025.pdf",
+                "contentType": "application/pdf",
+            }
+        ],
+    },
+)
+print(resp.json())
+```
 
 </Tab>
 </Tabs>

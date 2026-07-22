@@ -185,7 +185,9 @@ Each DNS record includes: `id`, `record_type` (`TXT` or `CNAME`), `name`, `value
 | 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@{domain}` |
 | 7 | CNAME | `bounce` | Return-Path | Points to `feedback-smtp.us-east-1.amazonses.com` |
 
-> **Note:** Names are relative to the domain. With domain `mystore.com`, the `_amazonses` record is configured as `_amazonses.mystore.com`. Some providers append the domain automatically, so you only enter `_amazonses`.
+<Note>
+  Names are relative to the domain. With domain `mystore.com`, the `_amazonses` record is configured as `_amazonses.mystore.com`. Some providers append the domain automatically, so you only enter `_amazonses`.
+</Note>
 
 Configure the DNS records with your provider and call `POST /domains/{domain}/verify` to validate. See [Deliverability](/en/concepts/deliverability).
 
@@ -280,7 +282,9 @@ curl -X GET https://api.reallyquickemails.com/domains/mystore.com/dns-records \
 
 Per-record `status`: `not_set`, `propagating`, `mismatch`, or `verified`. `last_checked_at` is `null` until the first verification with `POST /domains/{domain}/verify`.
 
-> **Note:** SPF and DMARC always appear with `status: "not_set"`: their propagation is not validated automatically.
+<Note>
+  SPF and DMARC always appear with `status: "not_set"`: their propagation is not validated automatically.
+</Note>
 
 ### Error Codes
 
@@ -766,7 +770,9 @@ curl -X DELETE https://api.reallyquickemails.com/domains/mystore.com \
 
 The same domain can be registered again later.
 
-> **Warning:** After deleting it, you will need to register the domain and configure the DNS records again to send from it.
+<Warning>
+  After deleting it, you will need to register the domain and configure the DNS records again to send from it.
+</Warning>
 
 ### Error Codes
 
@@ -828,7 +834,9 @@ curl -X PUT https://api.reallyquickemails.com/domains/mystore.com/sender \
 }
 ```
 
-> **Note:** The `reply_email` field is saved but not included in the response.
+<Note>
+  The `reply_email` field is saved but not included in the response.
+</Note>
 
 ### Error Codes
 
@@ -843,6 +851,20 @@ curl -X PUT https://api.reallyquickemails.com/domains/mystore.com/sender \
 ## Reply domain (clean Reply-To, token-less)
 
 Configure a **branded reply domain** per project (`reply.yourdomain.com`) so the Reply-To of API sends comes out clean —`localpart@reply.yourdomain.com`— instead of the encoded token. Sending and reply resolution are automatic once verified. Without a reply domain configured, the usual token is used. How it affects the webhook: [Webhooks · reply domain](/en/api-reference/webhooks#branded-reply-domain-optional-token-less).
+
+```mermaid
+flowchart LR
+  A[POST /domains/reply] --> B[Publish TXT + MX in DNS]
+  B --> C[POST /domains/reply/verify]
+  C --> D{SES verified?}
+  D -->|yes| E[Clean Reply-To active]
+  E --> F[Recipient reply]
+  F --> G[Webhook email.inbound]
+```
+
+<Info>
+  **Model for integrators (one reply domain per project).** The reply domain belongs to the project of the API key you call with. To offer clean replies to **your own clients**, each client is an RQE project with its own key: register `reply.clientdomain.com` using that project's key. Example: for your client Phrasso, with Phrasso's project key you call `POST /domains/reply { "domain": "phrasso.com" }` and their replies arrive at `name@reply.phrasso.com`. A project cannot have more than one reply domain.
+</Info>
 
 ### POST /domains/reply
 
@@ -1037,7 +1059,9 @@ curl -X POST https://api.reallyquickemails.com/api/projects/:projectId/tracking-
 
 An alternative to full domain verification: verify an individual email as a sender without configuring DNS. A verification email is sent; clicking the link verifies the email for sending.
 
-> **Note:** It is faster but does not include DKIM/SPF. For better deliverability, verify the full domain.
+<Note>
+  It is faster but does not include DKIM/SPF. For better deliverability, verify the full domain.
+</Note>
 
 When the status changes (from `pending` to `verified` or `failed`), RQE emits the `sender.verified` or `sender.failed` webhook. See [Webhooks](/en/api-reference/webhooks).
 

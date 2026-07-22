@@ -98,7 +98,9 @@ Todos los eventos outbound (`email.send`, `email.delivery`, `email.bounce`, `ema
 | `complaint_feedback_type` | complaint | `abuse`, `auth-failure`, `fraud`, `not-spam`, `other`, `virus`. |
 | `url_clicked` | click | URL original a la que el destinatario hizo click. |
 
-> **Nota:** los eventos `email.send` y `email.delivery` no incluyen un campo `delivered_at` separado — usa `event_timestamp`.
+<Note>
+  Los eventos `email.send` y `email.delivery` no incluyen un campo `delivered_at` separado — usa `event_timestamp`.
+</Note>
 
 ### `email.suppressed`
 
@@ -185,7 +187,9 @@ if (req.headers['x-rqe-signature'] !== expected) {
 }
 ```
 
-> **Importante:** verifica la firma sobre el body **raw**, antes de cualquier parser JSON. Si el body cambia (espacios, orden de keys), el HMAC no va a coincidir.
+<Warning>
+  Verifica la firma sobre el body **raw**, antes de cualquier parser JSON. Si el body cambia (espacios, orden de keys), el HMAC no va a coincidir.
+</Warning>
 
 ## Routing live / test / environment
 
@@ -229,6 +233,14 @@ Como los eventos outbound llegan a todas las URLs configuradas, basta configurar
 ## Inbound (replies con adjuntos)
 
 Cuando un destinatario responde tu email, RQE captura la respuesta y la dispara como `email.inbound`.
+
+```mermaid
+flowchart LR
+  A[Destinatario responde] --> B[SES recibe en el inbound de RQE]
+  B --> C[RQE resuelve el hilo por Message-ID]
+  C --> D[POST webhook email.inbound a tu endpoint]
+  D --> E[Incluye activity_id y thread_id resueltos]
+```
 
 ### Cuándo dispara
 

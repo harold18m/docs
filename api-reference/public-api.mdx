@@ -64,7 +64,9 @@ Envía un email individual a hasta 50 destinatarios.
 | `attachments`     | array               | No        | Lista de adjuntos (máx 10; máx 10 MB por adjunto y 10 MB en total). Estructura: `{ filename, url \| content (base64), contentType? }`. |
 | `environment`     | string              | No        | Enruta los webhooks de este envío al environment configurado en el proyecto. Formato `[a-zA-Z0-9_.-]`, máx 64 caracteres. Si la key no está pre-configurada en el dashboard, retorna 400 `ENVIRONMENT_NOT_CONFIGURED`. Ver [Webhook environments](/concepts/webhook-environments). |
 
-> El tracking de aperturas y clics se aplica en segundo plano (los remitentes transaccionales lo omiten). Este endpoint **no** agrega footer de unsubscribe ni headers `List-Unsubscribe` — esos se agregan automáticamente en campañas y en `/v1/send-template-email`; en `/v1/send-batch` los pasas mediante `custom_headers`.
+<Info>
+  El tracking de aperturas y clics se aplica en segundo plano (los remitentes transaccionales lo omiten). Este endpoint **no** agrega footer de unsubscribe ni headers `List-Unsubscribe` — esos se agregan automáticamente en campañas y en `/v1/send-template-email`; en `/v1/send-batch` los pasas mediante `custom_headers`.
+</Info>
 
 ### Ejemplo simple
 
@@ -83,6 +85,27 @@ curl -X POST https://api.reallyquickemails.com/v1/send-email \
     "subject": "Bienvenido a nuestra plataforma",
     "html_body": "<h1>Bienvenido!</h1><p>Gracias por registrarte.</p>"
   }'
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "recipient_email": "usuario@ejemplo.com",
+        "sender_email": "hola@miapp.com",
+        "sender_name": "Mi Empresa",
+        "subject": "Bienvenido a nuestra plataforma",
+        "html_body": "<h1>Bienvenido!</h1><p>Gracias por registrarte.</p>",
+    },
+)
+print(resp.json())
 ```
 
 </Tab>
@@ -118,6 +141,35 @@ curl -X POST https://api.reallyquickemails.com/v1/send-email \
 
 </Tab>
 
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "recipient_email": ["a@empresa.com", "b@empresa.com"],
+        "cc": "supervisor@empresa.com",
+        "sender_email": "notificaciones@miapp.com",
+        "sender_name": "Mi Empresa",
+        "subject": "Reporte diario",
+        "html_body": "<h1>Reporte</h1><p>Adjunto encontrarás el detalle.</p>",
+        "attachments": [
+            {
+                "filename": "reporte.pdf",
+                "url": "https://storage.miapp.com/reportes/2026-04-28.pdf",
+                "contentType": "application/pdf",
+            }
+        ],
+    },
+)
+print(resp.json())
+```
+
+</Tab>
+
 </Tabs>
 
 **Respuesta** `200 OK`
@@ -132,7 +184,9 @@ curl -X POST https://api.reallyquickemails.com/v1/send-email \
 
 `email_id` es el ID de actividad del envío — úsalo para correlacionar los eventos de tus [webhooks](/api-reference/webhooks). Es `null` si el registro de actividad no pudo crearse.
 
-> **Supresión:** se verifica al procesar el envío en segundo plano. Si el destinatario está suprimido (rebote, queja o baja), el email no se envía y la actividad queda con estado `suppressed`. Este endpoint no devuelve una respuesta `skipped` síncrona — `/v1/send-template-email` sí verifica la supresión antes de responder.
+<Info>
+  Se verifica al procesar el envío en segundo plano. Si el destinatario está suprimido (rebote, queja o baja), el email no se envía y la actividad queda con estado `suppressed`. Este endpoint no devuelve una respuesta `skipped` síncrona — `/v1/send-template-email` sí verifica la supresión antes de responder.
+</Info>
 
 ### Codigos de Error
 
@@ -170,7 +224,9 @@ Envía un correo con una plantilla pre-configurada y sustitución de variables (
 | `variables`            | object | No        | Variables para sustitución en la plantilla.                      |
 | `environment`          | string | No        | Igual que en `/v1/send-email`: enruta los webhooks al environment configurado. |
 
-> *Debes enviar `template_id` O `template_internal_id`. Si no envías ninguno, `html_body` (junto con `recipient_email` y `sender_email`) es requerido.
+<Note>
+  *Debes enviar `template_id` O `template_internal_id`. Si no envías ninguno, `html_body` (junto con `recipient_email` y `sender_email`) es requerido.
+</Note>
 
 Este endpoint agrega automáticamente:
 
@@ -205,6 +261,31 @@ curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
 
 </Tab>
 
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-template-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "template_id": "550e8400-e29b-41d4-a716-446655440000",
+        "recipient_email": "nuevo.usuario@ejemplo.com",
+        "sender_email": "onboarding@miapp.com",
+        "variables": {
+            "nombre": "Carlos",
+            "plan": "Pro",
+            "trial_days": 14,
+            "dashboard_url": "https://miapp.com/dashboard",
+        },
+    },
+)
+print(resp.json())
+```
+
+</Tab>
+
 </Tabs>
 
 ### Ejemplo con template internal ID
@@ -227,6 +308,28 @@ curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
       "nombre": "Maria"
     }
   }'
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-template-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "template_internal_id": 5,
+        "recipient_email": "cliente@ejemplo.com",
+        "sender_email": "noreply@miapp.com",
+        "variables": {
+            "nombre": "Maria",
+        },
+    },
+)
+print(resp.json())
 ```
 
 </Tab>
@@ -301,7 +404,9 @@ Envía correos masivos en un solo request — hasta **10,000 destinatarios** por
 | `dry_run`        | boolean           | No        | Previsualiza el batch sin encolar emails ni crear registros de actividad. Ver [Dry run](#dry-run). |
 | `recipients`     | array             | Si        | Lista de destinatarios (máximo 10,000).                             |
 
-> *Debes enviar `templateId` O ambos `subject` + `html`.
+<Note>
+  *Debes enviar `templateId` O ambos `subject` + `html`.
+</Note>
 
 **Estructura de cada recipient:**
 
@@ -371,6 +476,36 @@ else console.log('Batch encolado:', data.batch_id);
 
 </Tab>
 
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-batch",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "sender": "noreply@tudominio.com",
+        "senderName": "Mi Empresa",
+        "subject": "Oferta especial para ti, {nombre}",
+        "html": "<h1>Hola {nombre}!</h1><p>Tenemos una oferta especial en {producto}.</p>",
+        "recipients": [
+            {
+                "email": "juan@ejemplo.com",
+                "data": {"nombre": "Juan", "producto": "Plan Pro"},
+            },
+            {
+                "email": "maria@ejemplo.com",
+                "data": {"nombre": "Maria", "producto": "Plan Business"},
+            },
+        ],
+    },
+)
+print(resp.json())
+```
+
+</Tab>
+
 </Tabs>
 
 ### Ejemplo con template
@@ -412,6 +547,29 @@ await rqe.emails.sendBatch({
     { email: 'maria@ejemplo.com', data: { nombre: 'Maria' } },
   ],
 });
+```
+
+</Tab>
+
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-batch",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "sender": "noreply@tudominio.com",
+        "senderName": "Mi Empresa",
+        "templateId": "550e8400-e29b-41d4-a716-446655440000",
+        "recipients": [
+            {"email": "juan@ejemplo.com", "data": {"nombre": "Juan"}},
+            {"email": "maria@ejemplo.com", "data": {"nombre": "Maria"}},
+        ],
+    },
+)
+print(resp.json())
 ```
 
 </Tab>
@@ -463,6 +621,30 @@ await rqe.emails.sendBatch({
 
 </Tab>
 
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/send-batch",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "sender": "noreply@tudominio.com",
+        "subject": "Newsletter semanal",
+        "html": "<h1>Newsletter</h1><p>Las noticias de esta semana...</p>",
+        "scheduled_at": "2026-03-25T10:00:00Z",
+        "recipients": [
+            {"email": "sub1@ejemplo.com"},
+            {"email": "sub2@ejemplo.com"},
+        ],
+    },
+)
+print(resp.json())
+```
+
+</Tab>
+
 </Tabs>
 
 **Respuesta** `200 OK`
@@ -492,7 +674,9 @@ await rqe.emails.sendBatch({
 
 El `activity_id` de cada destinatario permite rastrear el estado de entrega vía webhooks.
 
-> **Supresión:** igual que en `/v1/send-email`, se aplica al procesar cada envío en segundo plano — los destinatarios suprimidos se omiten y su actividad queda con estado `suppressed`.
+<Info>
+  Igual que en `/v1/send-email`, se aplica al procesar cada envío en segundo plano — los destinatarios suprimidos se omiten y su actividad queda con estado `suppressed`.
+</Info>
 
 ### Idempotencia
 
@@ -525,7 +709,9 @@ Con `"dry_run": true` la API devuelve una previsualización, sin encolar emails 
 | Destinatarios por request | 10,000 |
 | Cache de idempotencia | 24 horas |
 
-> **Tip:** Para más de 10,000 destinatarios, usa múltiples llamadas o crea una campaña desde el Dashboard de RQE, que maneja lotes y reintentos automáticamente. Ver más en [Campañas](/api-reference/campaigns).
+<Tip>
+  Para más de 10,000 destinatarios, usa múltiples llamadas o crea una campaña desde el Dashboard de RQE, que maneja lotes y reintentos automáticamente. Ver más en [Campañas](/api-reference/campaigns).
+</Tip>
 
 ### Codigos de Error
 

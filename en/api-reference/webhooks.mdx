@@ -98,7 +98,9 @@ All outbound events (`email.send`, `email.delivery`, `email.bounce`, `email.comp
 | `complaint_feedback_type` | complaint | `abuse`, `auth-failure`, `fraud`, `not-spam`, `other`, `virus`. |
 | `url_clicked` | click | Original URL the recipient clicked. |
 
-> **Note:** the `email.send` and `email.delivery` events do not include a separate `delivered_at` field — use `event_timestamp`.
+<Note>
+  The `email.send` and `email.delivery` events do not include a separate `delivered_at` field — use `event_timestamp`.
+</Note>
 
 ### `email.suppressed`
 
@@ -185,7 +187,9 @@ if (req.headers['x-rqe-signature'] !== expected) {
 }
 ```
 
-> **Important:** verify the signature over the **raw** body, before any JSON parser. If the body changes (whitespace, key order), the HMAC will not match.
+<Warning>
+  Verify the signature over the **raw** body, before any JSON parser. If the body changes (whitespace, key order), the HMAC will not match.
+</Warning>
 
 ## Routing live / test / environment
 
@@ -229,6 +233,14 @@ Since outbound events reach all configured URLs, configuring just `webhook_url` 
 ## Inbound (replies with attachments)
 
 When a recipient replies to your email, RQE captures the reply and fires it as `email.inbound`.
+
+```mermaid
+flowchart LR
+  A[Recipient replies] --> B[SES receives on RQE's inbound]
+  B --> C[RQE resolves the thread by Message-ID]
+  C --> D[POST email.inbound webhook to your endpoint]
+  D --> E[Includes resolved activity_id and thread_id]
+```
 
 ### When it fires
 

@@ -7,7 +7,9 @@ description: "Send an email immediately or on a schedule, with templates and att
 
 Queues an email for immediate sending or schedules it for a future date.
 
-> **Advanced API** (`recipient`/`sender`/`html`) — the only one with scheduled sending, templates, and `dry_run`. For simple integrations, the [v1 API](/en/api-reference/public-api) uses REST-style names and a stable contract.
+<Info>
+  **Advanced API** (`recipient`/`sender`/`html`) — the only one with scheduled sending, templates, and `dry_run`. For simple integrations, the [v1 API](/en/api-reference/public-api) uses REST-style names and a stable contract.
+</Info>
 
 ## Authentication
 
@@ -185,6 +187,31 @@ else console.log('Queued:', data.email_id);
 ```
 
 </Tab>
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/send-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "html": "<h1>Hello {{name}}</h1><p>Your order #{{order}} is on its way.</p>",
+        "subject": "Your order is on its way",
+        "recipient": "customer@example.com",
+        "sender": "sales@mystore.com",
+        "senderName": "My Store",
+        "data": {
+            "name": "John",
+            "order": "12345",
+        },
+        "email_type": "transactional",
+    },
+)
+print(resp.json())
+```
+
+</Tab>
 </Tabs>
 
 **Response** `200 OK`
@@ -261,7 +288,42 @@ const { data, error } = await rqe.emails.send({
 });
 ```
 
-> In the SDK, attachments are sent as `content` in Base64 with `content_type` (snake_case); the `url` field is only available via the direct API.
+<Note>
+  In the SDK, attachments are sent as `content` in Base64 with `content_type` (snake_case); the `url` field is only available via the direct API.
+</Note>
+
+</Tab>
+<Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/send-email",
+    headers={"Authorization": "Bearer sk_proj_xxxxxxxxxxxx"},
+    json={
+        "subject": "Monthly Report - March 2025",
+        "recipient": ["manager@company.com", "director@company.com"],
+        "sender": "reports@company.com",
+        "senderName": "Reporting System",
+        "templateId": "monthly-report",
+        "data": {
+            "month": "March",
+            "year": "2025",
+        },
+        "scheduled_at": "next monday at 9am",
+        "timezone": "America/Santiago",
+        "attachments": [
+            {
+                "filename": "report-march-2025.pdf",
+                "url": "https://storage.example.com/reports/march-2025.pdf",
+                "contentType": "application/pdf",
+            }
+        ],
+    },
+)
+print(resp.json())
+```
 
 </Tab>
 </Tabs>

@@ -185,7 +185,9 @@ Valores de `status`: `not_set`, `propagating`, `mismatch`, `verified`.
 | 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@{domain}` |
 | 7 | CNAME | `bounce` | Return-Path | Apunta a `feedback-smtp.us-east-1.amazonses.com` |
 
-> **Nota:** Los nombres son relativos al dominio. Con dominio `mitienda.com`, el registro `_amazonses` se configura como `_amazonses.mitienda.com`. Algunos proveedores agregan el dominio automáticamente, así que solo ingresas `_amazonses`.
+<Note>
+  Los nombres son relativos al dominio. Con dominio `mitienda.com`, el registro `_amazonses` se configura como `_amazonses.mitienda.com`. Algunos proveedores agregan el dominio automáticamente, así que solo ingresas `_amazonses`.
+</Note>
 
 Configura los registros DNS en tu proveedor y llama a `POST /domains/{domain}/verify` para validar. Ver [Deliverability](/concepts/deliverability).
 
@@ -280,7 +282,9 @@ curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/dns-records \
 
 `status` por registro: `not_set`, `propagating`, `mismatch` o `verified`. `last_checked_at` es `null` hasta la primera verificación con `POST /domains/{domain}/verify`.
 
-> **Nota:** SPF y DMARC siempre aparecen con `status: "not_set"`: su propagación no se valida automáticamente.
+<Note>
+  SPF y DMARC siempre aparecen con `status: "not_set"`: su propagación no se valida automáticamente.
+</Note>
 
 ### Codigos de Error
 
@@ -766,7 +770,9 @@ curl -X DELETE https://api.reallyquickemails.com/domains/mitienda.com \
 
 El mismo dominio puede registrarse de nuevo más adelante.
 
-> **Advertencia:** Tras eliminarlo, deberás registrar el dominio y configurar los registros DNS de nuevo para enviar desde él.
+<Warning>
+  Tras eliminarlo, deberás registrar el dominio y configurar los registros DNS de nuevo para enviar desde él.
+</Warning>
 
 ### Codigos de Error
 
@@ -828,7 +834,9 @@ curl -X PUT https://api.reallyquickemails.com/domains/mitienda.com/sender \
 }
 ```
 
-> **Nota:** El campo `reply_email` se guarda pero no se incluye en la respuesta.
+<Note>
+  El campo `reply_email` se guarda pero no se incluye en la respuesta.
+</Note>
 
 ### Codigos de Error
 
@@ -843,6 +851,20 @@ curl -X PUT https://api.reallyquickemails.com/domains/mitienda.com/sender \
 ## Reply domain (Reply-To limpio, sin token)
 
 Configura un **dominio de reply branded** por proyecto (`reply.tudominio.com`) para que el Reply-To de los envíos API salga limpio —`localpart@reply.tudominio.com`— en vez del token codificado. El envío y la resolución de las respuestas son automáticos una vez verificado. Sin reply domain configurado, se usa el token de siempre. Cómo afecta el webhook: [Webhooks · reply domain](/api-reference/webhooks#reply-domain-branded-opcional-sin-token).
+
+```mermaid
+flowchart LR
+  A[POST /domains/reply] --> B[Publicar TXT + MX en DNS]
+  B --> C[POST /domains/reply/verify]
+  C --> D{SES verificado?}
+  D -->|sí| E[Reply-To limpio activo]
+  E --> F[Respuesta del destinatario]
+  F --> G[Webhook email.inbound]
+```
+
+<Info>
+  **Modelo para integradores (una reply-domain por proyecto).** El reply domain pertenece al proyecto de la API key con la que llamas. Para ofrecer reply limpio a **tus propios clientes**, cada cliente es un proyecto RQE con su propia key: registra `reply.dominiodelcliente.com` usando la key de ese proyecto. Ejemplo: para tu cliente Phrasso, con la key del proyecto de Phrasso llamas `POST /domains/reply { "domain": "phrasso.com" }` y sus respuestas llegan a `nombre@reply.phrasso.com`. Un proyecto no puede tener más de un reply domain.
+</Info>
 
 ### POST /domains/reply
 
@@ -1037,7 +1059,9 @@ curl -X POST https://api.reallyquickemails.com/api/projects/:projectId/tracking-
 
 Alternativa a la verificación de dominio completo: verifica un email individual como remitente sin configurar DNS. Se envía un email de verificación; al hacer clic en el enlace, el email queda verificado para enviar.
 
-> **Nota:** Es más rápida pero no incluye DKIM/SPF. Para mejor deliverability, verifica el dominio completo.
+<Note>
+  Es más rápida pero no incluye DKIM/SPF. Para mejor deliverability, verifica el dominio completo.
+</Note>
 
 Cuando el estado cambia (de `pending` a `verified` o `failed`), RQE emite el webhook `sender.verified` o `sender.failed`. Ver [Webhooks](/api-reference/webhooks).
 
