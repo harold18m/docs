@@ -61,15 +61,15 @@ The policy on what to do if SPF or DKIM fail. It's the strongest of the 3 agains
 Example:
 
 ```
-_dmarc.yourdomain.com. TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@yourdomain.com; pct=100"
+_dmarc.yourdomain.com. TXT "v=DMARC1; p=quarantine; rua=mailto:d-<id>@dmarc.reallyquickemails.com; pct=100"
 ```
 
 `pct=100` applies the policy to 100% of traffic. It's common to start with `pct=10` and increase gradually.
 
 <Info>
-  **DMARC reports**
+  **DMARC reports — managed by RQE**
 
-  With `rua=`, receiving servers send you daily reports on what % of your traffic passed SPF/DKIM. Useful for detecting spoofing or broken configurations. There are free services to parse them (Postmark, dmarcian).
+  With `rua=`, receiving servers send daily reports on what % of your traffic passed SPF/DKIM. The record RQE generates for you points that `rua` to a mailbox managed by RQE: we receive and process those reports for you — no external service or XML reading needed. Use the exact value shown in your dashboard under Domains (the `d-<id>` is unique per domain).
 </Info>
 
 ## MAIL FROM domain (custom)
