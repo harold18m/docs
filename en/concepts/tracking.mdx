@@ -37,7 +37,7 @@ Complaints (`email.complaint`) also add the recipient to the suppression list au
 
 RQE injects a transparent 1x1 pixel into the HTML. When the recipient's client loads images, it fires `email.open`.
 
-### Why reliability is ~70%
+### Why reliability is approximate
 
 - **Outlook desktop** blocks external images by default → no open detected
 - **Apple Mail iOS 15+** with MPP (Mail Privacy Protection) loads the pixel automatically on receipt → reports an open before the user actually opens

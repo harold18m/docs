@@ -37,7 +37,7 @@ Las quejas (`email.complaint`) también agregan al destinatario a la suppression
 
 RQE inyecta un pixel 1x1 transparente en el HTML. Cuando el cliente del destinatario carga las imágenes, dispara `email.open`.
 
-### Por qué la confiabilidad es ~70%
+### Por qué la confiabilidad es aproximada
 
 - **Outlook desktop** bloquea imágenes externas por default → no detecta open
 - **Apple Mail iOS 15+** con MPP (Mail Privacy Protection) carga el pixel automáticamente al recibir → reporta open antes de que el usuario abra realmente
