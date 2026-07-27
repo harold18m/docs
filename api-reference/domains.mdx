@@ -26,7 +26,7 @@ Si automatizas el alta de dominios desde tu propia aplicación, este es el recor
 
 <Steps>
   <Step title="Registra el dominio">
-    `POST /domains/register` retorna los 7 registros DNS en `dns_records`, ya listos para mostrar.
+    `POST /domains/register` retorna los 8 registros DNS en `dns_records`, ya listos para mostrar.
   </Step>
   <Step title="Ofrece la configuración en un clic">
     `GET /domains/{domain}/domain-connect`. Si retorna `supported: true`, redirige al usuario a `apply_url` y su proveedor crea los registros solo. Si no, muestra los registros para configuración manual.
@@ -153,16 +153,25 @@ curl -X POST https://api.reallyquickemails.com/domains/register \
       "id": "e6f70819-2a3b-44c5-d6e7-f8091a2b3c4d",
       "record_type": "TXT",
       "name": "_dmarc",
-      "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@mitienda.com",
+      "value": "v=DMARC1; p=none; rua=mailto:d-a1b2c3d4-e5f6-7890-abcd-ef1234567890@dmarc.reallyquickemails.com",
       "purpose": "dmarc",
       "status": "not_set",
       "ttl_hint": 300
     },
     {
       "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
-      "record_type": "CNAME",
-      "name": "bounce",
-      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "record_type": "MX",
+      "name": "send",
+      "value": "10 feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "0819192a-4c5d-46e7-f809-1a2b3c4d5e6f",
+      "record_type": "TXT",
+      "name": "send",
+      "value": "v=spf1 include:amazonses.com ~all",
       "purpose": "return_path",
       "status": "not_set",
       "ttl_hint": 300
@@ -171,7 +180,7 @@ curl -X POST https://api.reallyquickemails.com/domains/register \
 }
 ```
 
-Cada registro DNS incluye: `id`, `record_type` (`TXT` o `CNAME`), `name`, `value`, `purpose` (`ses_verification`, `dkim`, `spf`, `dmarc`, `return_path`), `status` y `ttl_hint` (TTL sugerido en segundos).
+Cada registro DNS incluye: `id`, `record_type` (`TXT`, `CNAME` o `MX`), `name`, `value`, `purpose` (`ses_verification`, `dkim`, `spf`, `dmarc`, `return_path`), `status` y `ttl_hint` (TTL sugerido en segundos).
 
 Valores de `status`: `not_set`, `propagating`, `mismatch`, `verified`.
 
@@ -182,8 +191,13 @@ Valores de `status`: `not_set`, `propagating`, `mismatch`, `verified`.
 | 1 | TXT | `_amazonses` | Verificación de dominio | Valor generado automáticamente al registrar |
 | 2-4 | CNAME | `{token}._domainkey` | DKIM | 3 registros, tokens generados automáticamente |
 | 5 | TXT | `@` (raíz del dominio) | SPF | `v=spf1 include:amazonses.com ~all` |
-| 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@{domain}` |
-| 7 | CNAME | `bounce` | Return-Path | Apunta a `feedback-smtp.us-east-1.amazonses.com` |
+| 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=none; rua=mailto:d-{identity_id}@dmarc.reallyquickemails.com` |
+| 7 | MX | `send` | Return-Path | `10 feedback-smtp.us-east-1.amazonses.com` |
+| 8 | TXT | `send` | Return-Path | `v=spf1 include:amazonses.com ~all` |
+
+<Note>
+  El `rua` del DMARC apunta a un buzón de RQE, no a una casilla tuya: así recibimos los reportes agregados por ti y los puedes ver en el detalle del dominio. El dominio nace en `p=none` (solo monitoreo) para no mandar a spam el correo legítimo de tus otras herramientas mientras se alinea.
+</Note>
 
 <Note>
   Los nombres son relativos al dominio. Con dominio `mitienda.com`, el registro `_amazonses` se configura como `_amazonses.mitienda.com`. Algunos proveedores agregan el dominio automáticamente, así que solo ingresas `_amazonses`.
@@ -268,9 +282,9 @@ curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/dns-records \
     },
     {
       "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
-      "record_type": "CNAME",
-      "name": "bounce",
-      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "record_type": "MX",
+      "name": "send",
+      "value": "10 feedback-smtp.us-east-1.amazonses.com",
       "purpose": "return_path",
       "status": "not_set",
       "ttl_hint": 300,
@@ -360,9 +374,9 @@ curl -X POST https://api.reallyquickemails.com/domains/mitienda.com/verify \
     },
     {
       "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
-      "record_type": "CNAME",
-      "name": "bounce",
-      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "record_type": "MX",
+      "name": "send",
+      "value": "10 feedback-smtp.us-east-1.amazonses.com",
       "purpose": "return_path",
       "status": "propagating",
       "last_checked_at": "2025-03-10T18:45:00.000Z"
@@ -378,7 +392,7 @@ La verificación comprueba tres aspectos:
 
 1. **Verificación de dominio** — El registro TXT `_amazonses` está configurado.
 2. **DKIM** — Los 3 registros CNAME de DKIM están configurados y propagados.
-3. **MAIL FROM** — El registro CNAME de Return-Path (`bounce`) está configurado.
+3. **MAIL FROM** — Los registros de Return-Path en `send` (MX y TXT) están configurados.
 
 Campos clave:
 
