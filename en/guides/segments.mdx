@@ -1,0 +1,129 @@
+---
+title: Segments
+description: "Sync your contact base with RQE and segment it with dynamic rules."
+---
+
+A segment is a list of contacts within a project: it's what you pick as the audience when you send a campaign. There are two kinds, and the difference matters a lot when an external system (your CRM, your backend, your platform) is the one feeding the segment.
+
+| | Static | Dynamic |
+|---|---|---|
+| Who decides membership | Your system, via API | A rule evaluated by RQE |
+| Adding | You request it | Automatic |
+| Removing | You request it | Automatic |
+| Best for | Fixed lists, one-off imports | "Active customers", "recent buyers", "didn't open the last campaign" |
+
+The static trap is a familiar one: adding always gets implemented, removing almost never does. If your system stops sending the `DELETE` when someone churns, the segment slowly fills with people who no longer belong — and nobody notices until a campaign goes to the wrong audience. A dynamic segment doesn't have that problem.
+
+---
+
+## Syncing your base with events
+
+This is the recommended approach when the source of truth lives in your platform. The idea: you report **facts** (events), RQE derives the **audience** (the segment).
+
+### 1. Send the event from your system
+
+Whenever the fact that defines your audience happens — a successful charge, a renewal, a login — report the event:
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/events \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@acme.com",
+    "event": "payment_received",
+    "properties": { "plan": "pro", "amount": 49.0 }
+  }'
+```
+
+You don't need to create the contact first: if the email doesn't exist, it's created for you. For bulk loads use [`POST /v1/events/bulk`](/en/api-reference/events) (up to 1,000 per call).
+
+### 2. Create the dynamic segment
+
+In the app: **Audience → Segments**, open the segment and choose **Convert to dynamic segment**. Then:
+
+- **Rule type**: `Behavior (event)`
+- **Action**: `Triggered the event`
+- **Event**: `payment_received`
+- **In the last**: `35` days
+
+That is, literally, "customers who are paying right now".
+
+### 3. Send
+
+Pick that segment as your campaign audience. There's no manual sync step and no refresh button.
+
+<Note>
+The rolling window does the dirty work. Someone who churns stops generating the event, falls out of the window, and drops from the segment on their own. Pick a window slightly wider than your billing cycle (35 days for monthly billing) so a charge that runs a few days late doesn't kick the customer out by accident.
+</Note>
+
+---
+
+## Available rules
+
+Each dynamic segment is defined by **one** rule:
+
+| Rule | Includes contacts who… |
+|---|---|
+| Behavior (event) | Triggered — or did **not** trigger — one of your events in the last N days |
+| Campaign engagement | Opened, clicked, didn't open, or didn't click a specific campaign |
+| Email engagement | Opened **and** clicked some email from the project within the window |
+| Automation participation | Went through an automation, filterable by flow status |
+| Store purchase (Shopify) | Bought N or more times within the window, or stopped buying |
+| Abandoned checkout (Shopify) | Started a checkout and didn't complete it |
+
+The `Behavior (event)` rule supports the negative operator (`Didn't trigger the event`), which is handy for win-back: "didn't trigger `payment_received` in the last 60 days".
+
+<Warning>
+A segment takes **one rule only**. To combine criteria ("active customers who also clicked"), build the segment from the most restrictive rule. If you need the exact intersection, resolve it on your side: compute the audience in your system and sync it as a static segment.
+</Warning>
+
+---
+
+## When membership updates
+
+| Moment | What happens |
+|---|---|
+| When you use the segment | Membership resolves **live**. Send the event and launch the campaign a minute later, and the contact is already in |
+| Every hour | RQE recalculates and persists membership. This is what fires automations with the "segment change" trigger |
+
+In other words: to **send**, you wait for nothing. The hourly cadence only matters if you also hang an automation off entry into the segment.
+
+---
+
+## Static segments via API
+
+If you'd rather control membership yourself, the endpoints live in [Leads](/en/api-reference/leads#segments):
+
+| Method | Path | What for |
+|---|---|---|
+| POST | `/v1/leads` | Create/update contacts with `segment_ids` |
+| POST | `/v1/leads/:id/segments` | Add a contact to one or more segments |
+| DELETE | `/v1/leads/:id/segments/:segmentId` | Remove it from a segment |
+
+The `:id` is the contact's UUID, not its email.
+
+**Where to find a segment ID:** open it in the app and copy it from the URL, or use [`GET /v1/leads/:id`](/en/api-reference/leads), which returns the contact's `segment_ids`.
+
+---
+
+## From an MCP client
+
+If you connect RQE to Claude or Cursor through the [MCP server](/en/guides/mcp), you can do all of the above conversationally, without writing code:
+
+- `track_event` — records the event (also auto-creates the contact)
+- `create_segment` — creates the segment; accepts the rule to make it dynamic right away
+- `list_segments` — lists existing ones, with their IDs
+- `upsert_contacts` — up to 1,000 contacts per call, with their `segment_ids`
+
+---
+
+## FAQ
+
+**Can I segment by tags or contact attributes?**
+Not as a segment rule yet. Tags ([`POST /v1/leads/:email/tags`](/en/api-reference/leads#tags)) and attributes are evaluated inside **automations**, where they're used to branch a flow. To build audiences, use events.
+
+**Do contacts created by an event receive emails?**
+Yes, they're regular project contacts. Keep in mind that creating a contact may enroll it into active automations with new-contact triggers.
+
+**What if I send the same event many times?**
+Nothing bad: events accumulate as history. The rule looks at the most recent occurrence within the window, so re-sending the event on every charge is exactly the intended usage.
