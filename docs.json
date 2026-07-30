@@ -28,6 +28,7 @@
               "guides/authentication",
               "guides/templates",
               "guides/scheduling",
+              "guides/segments",
               "guides/attachments",
               "guides/faq"
             ]
@@ -72,6 +73,7 @@
               "en/guides/authentication",
               "en/guides/templates",
               "en/guides/scheduling",
+              "en/guides/segments",
               "en/guides/attachments",
               "en/guides/faq"
             ]
