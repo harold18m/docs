@@ -197,8 +197,12 @@ Configure the DNS records with your provider and call `POST /domains/{domain}/ve
 | ------ | -------------------------------------------------------- |
 | `400`  | Missing required fields, malformed domain, or `sender_email` does not end in `@{domain}`. |
 | `401`  | Invalid API Key.                                         |
-| `409`  | The domain is already registered in this project.        |
+| `409`  | The domain is attached to another verified sender.       |
 | `500`  | Internal error while registering the domain.             |
+
+<Note>
+  **Registration is idempotent.** If the domain already has an incomplete record, the operation reconciles it instead of failing: it responds `201` with `reused: true` and the existing DKIM records. Retrying a half-finished registration is safe and won't create duplicates.
+</Note>
 
 ---
 

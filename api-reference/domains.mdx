@@ -197,8 +197,12 @@ Configura los registros DNS en tu proveedor y llama a `POST /domains/{domain}/ve
 | ------ | -------------------------------------------------------- |
 | `400`  | Campos requeridos faltantes, dominio con formato inválido, o `sender_email` no termina en `@{domain}`. |
 | `401`  | API Key inválida.                                        |
-| `409`  | El dominio ya está registrado en este proyecto.          |
+| `409`  | El dominio está asociado a otro remitente verificado.    |
 | `500`  | Error interno al registrar el dominio.                   |
+
+<Note>
+  **El alta es idempotente.** Si el dominio ya tiene un registro incompleto, la operación lo reconcilia en vez de fallar: responde `201` con `reused: true` y sus registros DKIM existentes. Reintentar un alta que quedó a medias es seguro y no crea duplicados.
+</Note>
 
 ---
 
