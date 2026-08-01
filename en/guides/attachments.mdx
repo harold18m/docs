@@ -1,9 +1,15 @@
 ---
 title: Attachments
-description: "Attach files (PDF, .ics) to your sends via URL or base64."
+description: "Attach files (MP3, PDF, .ics) to your sends via URL or base64."
 ---
 
 Attach files with the [`POST /send-email`](/en/api-reference/send-email) endpoint. They're specified in the `attachments` field of the body.
+
+<Note>
+This page covers the **API**. You can also attach files from the platform when creating a
+campaign: in the creation panel, under **Attachments**. There you upload files straight from your
+computer (no public URL needed) and the same types and limits below apply.
+</Note>
 
 ## Attachment structure
 
@@ -22,10 +28,20 @@ Each attachment must include `filename` and exactly one of `url` or `content`.
 
 Only the following MIME types are allowed:
 
-- `application/pdf`
-- `text/calendar`
+| MIME type | Extension |
+|---|---|
+| `application/pdf` | `.pdf` |
+| `text/calendar` | `.ics` |
+| `audio/mpeg` | `.mp3` |
 
 If the MIME type doesn't match these, the send fails in the background (see validation below).
+
+<Warning>
+**Attachments cost you deliverability.** On bulk sends, a binary attachment is a strong spam
+signal and your domain reputation pays for it. For audio or video, a button linking to your own
+page usually works better: lighter, plays in the browser, and tells you who opened it (an
+attachment doesn't).
+</Warning>
 
 ## Limits
 
