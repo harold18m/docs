@@ -867,7 +867,11 @@ flowchart LR
 ```
 
 <Info>
-  **Modelo para integradores (una reply-domain por proyecto).** El reply domain pertenece al proyecto de la API key con la que llamas. Para ofrecer reply limpio a **tus propios clientes**, cada cliente es un proyecto RQE con su propia key: registra `reply.dominiodelcliente.com` usando la key de ese proyecto. Ejemplo: para tu cliente Phrasso, con la key del proyecto de Phrasso llamas `POST /domains/reply { "domain": "phrasso.com" }` y sus respuestas llegan a `nombre@reply.phrasso.com`. Un proyecto no puede tener más de un reply domain.
+  **Modelo para integradores (varios reply domains por proyecto).** El reply domain pertenece al proyecto de la API key con la que llamas, y **un proyecto puede tener varios**: cada envío resuelve el que corresponde al dominio del remitente.
+
+  Para ofrecer reply limpio a **tus propios clientes** desde un mismo proyecto, registra el dominio de cada uno con tu key: `POST /domains/reply { "domain": "phrasso.com" }` y las respuestas de ese cliente llegan a `nombre@reply.phrasso.com`. Para verificar uno concreto, pasa `domain` en el body de `POST /domains/reply/verify`.
+
+  También puedes darle un proyecto propio a cada cliente, con su key — ver [Partner quickstart](/guides/partner-quickstart) para cuándo conviene cada modelo.
 </Info>
 
 ### POST /domains/reply
