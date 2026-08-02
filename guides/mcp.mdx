@@ -3,7 +3,7 @@ title: Servidor MCP
 description: "Conecta tu cuenta de ReallyQuickEmails a Claude, Cursor u otro cliente de IA y opera tu proyecto conversando."
 ---
 
-El **servidor MCP** de ReallyQuickEmails expone tu proyecto mediante el [Model Context Protocol](https://modelcontextprotocol.io). Conéctalo a Claude Desktop, Cursor o Claude Code y tu asistente podrá consultar tus contactos, campañas, métricas y automatizaciones respondiendo en lenguaje natural.
+El **servidor MCP** de ReallyQuickEmails expone tu proyecto mediante el [Model Context Protocol](https://modelcontextprotocol.io). Conéctalo a claude.ai, Claude Desktop, Cursor o Claude Code y tu asistente podrá consultar tus contactos, campañas, métricas y automatizaciones respondiendo en lenguaje natural.
 
 <Info>
   Tu asistente puede **consultar** datos, **modificar** contactos y segmentos, **crear campañas en borrador** (que tú revisas y envías desde la app), **inscribir contactos en automatizaciones** e incluso **enviar correo** — cada capacidad detrás de su propio permiso, que tú concedes al crear la clave. **Crear automatizaciones completas por chat llega próximamente.**
@@ -16,6 +16,50 @@ La conexión es segura por diseño:
 - **La revocas cuando quieras** y el acceso se corta en la siguiente llamada.
 
 ---
+
+## Desde claude.ai (lo más rápido)
+
+En claude.ai no necesitas crear ninguna clave a mano ni editar archivos de configuración:
+
+<Steps>
+
+<Step title="Agregar el conector">
+
+Abre **Configuración → Conectores → Agregar conector personalizado** y pega la URL:
+
+```
+https://mcp.reallyquickemails.com/mcp
+```
+
+</Step>
+
+<Step title="Autorizar">
+
+Claude te lleva a una pantalla de ReallyQuickEmails. Inicia sesión si no lo estabas, elige el
+**proyecto** que quieres conectar, marca si además de leer quieres permitir **crear y editar**, y
+pulsa **Autorizar**.
+
+Eso es todo: la app emite la clave por ti y el conector queda listo.
+
+</Step>
+
+</Steps>
+
+<Info>
+  La clave que se emite aparece en **Integraciones → API Keys → Claves MCP**, con el nombre del
+  cliente que conectaste. Para desconectar el conector, revócala ahí.
+</Info>
+
+<Warning>
+  Por esta vía **nunca se concede `sends:execute`** (enviar correo real). Si quieres que tu
+  asistente envíe por ti, crea la clave a mano con ese permiso y conéctalo por el método de abajo.
+</Warning>
+
+---
+
+## Con una clave (Claude Desktop, Cursor, Claude Code)
+
+Los clientes que aceptan headers en su configuración usan tu clave MCP directamente.
 
 <Steps>
 
@@ -284,6 +328,10 @@ Todavía no — llega **próximamente**. Hoy puede inscribir contactos en automa
 
 <Accordion title="¿Puedo tener varias claves?">
 Sí. Es buena práctica una clave por cliente o por uso, cada una con el mínimo de permisos, para poder revocar una sin afectar al resto.
+</Accordion>
+
+<Accordion title="¿Por qué claude.ai no me deja pegar la clave?">
+Porque no la necesita. Los conectores de claude.ai no tienen campo para headers: se conectan por OAuth, así que en vez de pedirte una clave te llevan a una pantalla de ReallyQuickEmails donde eliges proyecto y permisos, y la app emite la clave por ti. Es el mismo tipo de clave (`rqe_mcp_...`) y la ves y revocas en el mismo lugar.
 </Accordion>
 
 </AccordionGroup>
