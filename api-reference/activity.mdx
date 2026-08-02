@@ -173,6 +173,7 @@ Lista envíos con filtros para obtener datasets históricos y analizar patrones 
 | Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
 | `email` | string | No | Filtra por `recipient_primary` (se normaliza a lowercase) |
+| `sender_domain` | string | No | Filtra por el dominio del **remitente**, ej. `cliente.com`. Acepta `@cliente.com` |
 | `status` | string | No | Filtra por `current_status`: `queued`, `retrying`, `sent`, `delivered`, `bounced`, `complained`, `failed`, `suppressed` |
 | `automation_run_id` | uuid | No | Todos los emails generados por un enrollment específico |
 | `campaign_id` | uuid | No | Todos los emails enviados como parte de una campaña |
@@ -182,6 +183,12 @@ Lista envíos con filtros para obtener datasets históricos y analizar patrones 
 | `per_page` | int | No | Default 50, max 200 |
 
 **Caso típico con `automation_run_id`:** guarda el `automation_run_id` que devuelve `POST /v1/automations/:id/enroll`. Cuando el flujo haya ejecutado N emails, obtén todos filtrando por ese ID.
+
+**Caso típico con `sender_domain`:** si envías en nombre de varios clientes desde un mismo proyecto, este filtro aísla los envíos de uno solo. Es la vía para depurar "¿qué pasó con los emails de este cliente?" sin separarlos en proyectos distintos.
+
+<Note>
+`sender_domain` matchea el dominio completo, no un prefijo: filtrar por `acme.com` **no** devuelve envíos de `acme.com.mx`. Un valor que no sea un dominio válido devuelve `400 INVALID_SENDER_DOMAIN`.
+</Note>
 
 **Request:**
 
@@ -197,6 +204,13 @@ Filtrar por `automation_run_id`:
 
 ```bash
 curl "https://api.reallyquickemails.com/v1/activity?automation_run_id=e42c853c-2e28-40cc-aad8-5de7d5395ede" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+Los rebotes de un cliente concreto, útil cuando envías en nombre de varios:
+
+```bash
+curl "https://api.reallyquickemails.com/v1/activity?sender_domain=cliente.com&status=bounced&since=2026-07-01" \
   -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
 ```
 
