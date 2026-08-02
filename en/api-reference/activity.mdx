@@ -267,6 +267,68 @@ To analyze delivery patterns in batch, use pull. For real-time reactive automati
 
 Learn more in [Webhooks](webhooks).
 
+---
+
+## GET /v1/domain-stats
+
+Aggregated metrics **by sender domain**. If you send on behalf of several customers from a single project, this endpoint gives you each one's summary: `GET /v1/activity?sender_domain=` lists sends one by one, this aggregates them.
+
+**Parameters (query):**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `since` | ISO8601 | No | Start of the period. Default: 30 days ago |
+| `until` | ISO8601 | No | End of the period. Default: now |
+
+**Request:**
+
+```bash
+curl "https://api.reallyquickemails.com/v1/domain-stats?since=2026-07-01" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "period": { "since": "2026-07-01T00:00:00.000Z", "until": "2026-08-02T00:00:00.000Z" },
+  "data": [
+    {
+      "sender_domain": "customer-a.com",
+      "total_sent": 56076,
+      "total_delivered": 48521,
+      "hard_bounced": 147,
+      "soft_bounced": 986,
+      "complained": 3,
+      "unique_opens": 14203,
+      "unique_clicks": 1508,
+      "hard_bounce_rate": 0.26
+    }
+  ]
+}
+```
+
+**Response fields:**
+
+| Field | Description |
+|---|---|
+| `sender_domain` | Sender's domain — the grouping key |
+| `total_sent` | Sends in the period (test sends excluded) |
+| `total_delivered` | Confirmed as delivered by the provider |
+| `hard_bounced` | **Permanent** bounces: the address doesn't exist. Auto-suppressed |
+| `soft_bounced` | **Transient** bounces: mailbox full, temporary rejection. Not suppressed |
+| `complained` | Marked as spam by the recipient |
+| `unique_opens` / `unique_clicks` | Distinct recipients who opened / clicked |
+| `hard_bounce_rate` | `hard_bounced / total_sent × 100`, rounded to 2 decimals |
+
+<Warning>
+**Watch `hard_bounce_rate`, not the total bounce count.** Email providers calculate the suspension threshold (typically 5%) on **permanent** bounces. Transient ones don't count, and confusing the two leads to false alarms: a domain can show 12% total bounces while staying below 1% hard bounce.
+
+If `hard_bounce_rate` stays above 3%, review that list's quality before sending more.
+</Warning>
+
 ## Rate limits
 
 - Max 200 results per page in `GET /v1/activity` (`per_page` greater than 200 is clamped to 200).
+- `GET /v1/domain-stats` aggregates over the requested period; very long ranges take longer.

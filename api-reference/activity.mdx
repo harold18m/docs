@@ -267,6 +267,68 @@ Para analizar patrones de entrega en batch, usa pull. Para automatizaciones reac
 
 Ver más en [Webhooks](webhooks).
 
+---
+
+## GET /v1/domain-stats
+
+Métricas agregadas **por dominio del remitente**. Si envías en nombre de varios clientes desde un mismo proyecto, este endpoint te da el resumen de cada uno: `GET /v1/activity?sender_domain=` lista los envíos uno a uno, esto los agrega.
+
+**Parámetros (query):**
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `since` | ISO8601 | No | Inicio del período. Default: hace 30 días |
+| `until` | ISO8601 | No | Fin del período. Default: ahora |
+
+**Request:**
+
+```bash
+curl "https://api.reallyquickemails.com/v1/domain-stats?since=2026-07-01" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "period": { "since": "2026-07-01T00:00:00.000Z", "until": "2026-08-02T00:00:00.000Z" },
+  "data": [
+    {
+      "sender_domain": "cliente-a.com",
+      "total_sent": 56076,
+      "total_delivered": 48521,
+      "hard_bounced": 147,
+      "soft_bounced": 986,
+      "complained": 3,
+      "unique_opens": 14203,
+      "unique_clicks": 1508,
+      "hard_bounce_rate": 0.26
+    }
+  ]
+}
+```
+
+**Campos de la respuesta:**
+
+| Campo | Descripción |
+|---|---|
+| `sender_domain` | Dominio del remitente — la unidad por la que se agrupa |
+| `total_sent` | Envíos en el período (excluye los de prueba) |
+| `total_delivered` | Confirmados como entregados por el proveedor |
+| `hard_bounced` | Rebotes **permanentes**: la dirección no existe. Se suprimen automáticamente |
+| `soft_bounced` | Rebotes **temporales**: buzón lleno, rechazo transitorio. No se suprimen |
+| `complained` | Marcados como spam por el destinatario |
+| `unique_opens` / `unique_clicks` | Destinatarios distintos que abrieron / hicieron click |
+| `hard_bounce_rate` | `hard_bounced / total_sent × 100`, redondeado a 2 decimales |
+
+<Warning>
+**Mira `hard_bounce_rate`, no el total de rebotes.** Los proveedores de email calculan el umbral de suspensión (habitualmente 5%) sobre los rebotes **permanentes**. Los temporales no cuentan, y confundirlos lleva a alarmas falsas: un dominio puede mostrar 12% de rebote total y estar por debajo del 1% de hard bounce.
+
+Si `hard_bounce_rate` supera el 3% de forma sostenida, revisa la calidad de esa lista antes de seguir enviando.
+</Warning>
+
 ## Rate limits
 
 - Max 200 resultados por página en `GET /v1/activity` (`per_page` mayor a 200 se ajusta a 200).
+- `GET /v1/domain-stats` agrega sobre el período pedido; rangos muy largos tardan más.
