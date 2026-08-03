@@ -5,34 +5,135 @@ description: "Integra RQE como plataforma para tus propios clientes: dos modelos
 
 Esta guía es para **partners**: integradores que ofrecen email a **sus propios clientes** usando RQE por debajo (patrón reseller).
 
-Hay **dos formas** de estructurarlo, y la decisión no es de schema — es de a quién le das acceso.
+**El modelo es: un cliente, un proyecto.** Creas un proyecto por cada cliente con tu partner-key y recibes su API key para operarlo. Cada cliente queda aislado de verdad — sus datos, sus dominios, sus límites y sus estadísticas.
 
-## Cuál elegir
+## Empieza acá
 
-|                                   | **A — un proyecto, N clientes** | **B — un proyecto por cliente** |
-| --------------------------------- | ------------------------------- | ------------------------------- |
-| Credencial                        | tu `sk_proj_`                   | `sk_partner_` + una `sk_proj_` por cliente |
-| Dominio y reply domain por cliente | sí                              | sí                              |
-| Métricas por cliente              | `GET /v1/domain-stats`          | `GET /v1/partner/projects/:id/stats` |
-| Rate limits por cliente           | no, del proyecto entero         | **sí**                          |
-| Tu cliente entra al dashboard RQE | **no es posible**               | **sí**                          |
-| Qué gestionas                     | una key                         | N proyectos y N keys            |
+<Steps>
+  <Step title="Crea el proyecto del cliente">
+    Con tu **partner-key** (`sk_partner_...`, la emite RQE al habilitar tu cuenta de partner), creas un proyecto por cliente y recibes su `api_key`.
 
-<Tip>
-  **Empieza por A.** Es menos piezas y cubre el caso habitual: tú pones la interfaz y RQE es la infraestructura por debajo.
+    ```bash
+    curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
+      -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{ "name": "Cliente", "external_key": "tu-id-interno" }'
+    ```
 
-  Elige **B** si necesitas alguna de estas tres: que tu cliente final entre al dashboard de RQE, límites de envío por cliente, o credenciales separadas por si hay que revocar una sola.
-</Tip>
+    ```json
+    { "project_id": "…", "slug": "cliente", "api_key": "sk_proj_…" }
+    ```
 
-<Info>
-  **¿Ya integraste por B?** No hay nada que migrar. Los endpoints de `/v1/partner` siguen soportados y tus proyectos operan igual. B no es un camino obsoleto: es la opción correcta cuando necesitas lo que A no da.
-</Info>
+    Guarda la `api_key` de forma segura. El `external_key` hace la llamada **idempotente**: reintentarla devuelve el mismo proyecto en vez de duplicarlo.
+  </Step>
+
+  <Step title="Registra su dominio">
+    Con la `api_key` del cliente, das de alta su dominio y recibes los registros DNS que debe publicar.
+
+    ```bash
+    curl -X POST https://api.reallyquickemails.com/domains/register \
+      -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{ "domain": "cliente.com" }'
+    ```
+
+    Para que los publique de un click, usa [Domain Connect](/api-reference/domains): `GET /domains/cliente.com/domain-connect` devuelve una URL firmada que crea los registros en su proveedor.
+
+    <Note>
+      Este es el paso donde se traba la mayoría de las integraciones: el cliente final tiene que tocar su DNS. El link de un click es lo que más ayuda.
+    </Note>
+  </Step>
+
+  <Step title="Registra su reply domain (opcional)">
+    Para que las respuestas lleguen a `nombre@reply.cliente.com` en vez de a una dirección con token:
+
+    ```bash
+    curl -X POST https://api.reallyquickemails.com/domains/reply \
+      -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+      -H "Content-Type: application/json" \
+      -d '{ "domain": "cliente.com" }'
+    ```
+  </Step>
+
+  <Step title="Espera la verificación">
+    Cuando el cliente publique el DNS, recibes el webhook **`domain.verified`** — no hace falta pollear. Ver [Webhooks](/api-reference/webhooks).
+  </Step>
+
+  <Step title="Envía y mide">
+    Con la misma `api_key`, [envía](/api-reference/public-api) transaccional o en lote. Para ver cómo va cada cliente:
+
+    ```bash
+    curl https://api.reallyquickemails.com/v1/partner/projects/{project_id}/stats \
+      -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+    ```
+
+    Y `GET /v1/partner/projects` lista toda tu cartera.
+  </Step>
+</Steps>
+
+## Revisa la salud de tus clientes
+
+`GET /domains/health` devuelve, por cada dominio del proyecto: si puede enviar, cómo está su autenticación, cuánto envió, cómo rebota y **qué le falta** — en texto que puedes reenviar directo a tu cliente.
+
+```bash
+curl "https://api.reallyquickemails.com/domains/health" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+```json
+{
+  "summary": { "total": 3, "healthy": 1, "warning": 1, "critical": 1 },
+  "data": [
+    {
+      "domain": "cliente.com",
+      "status": "critical",
+      "can_send": true,
+      "sent": 4501,
+      "hard_bounce_rate": 0.42,
+      "issues": ["Verificado solo por email (un click), sin dominio: no permite DKIM propio, reply domain ni tracking domain."]
+    }
+  ]
+}
+```
+
+<Warning>
+  **Presta atención a `can_send: true` con `status: critical`.** El correo sale con `200` y nada parece roto, pero va sin DKIM del dominio de tu cliente — su reputación se mezcla con la de todos y no puede usar reply domain ni tracking domain propios.
+
+  Es el hueco más común en las integraciones de partner, y no aparece como error en ningún otro lado.
+</Warning>
+
+Ver [Dominios](/api-reference/domains) para la respuesta completa.
+
+<Warning>
+  **Mira el hard bounce, no el total de rebotes.** Los proveedores calculan el umbral de suspensión (~5%) sobre los rebotes **permanentes**; los temporales no cuentan. Un dominio puede mostrar 12% de rebote total y estar por debajo del 1% de hard bounce.
+
+  Y pide a cada cliente que publique el **DKIM de su propio dominio**: es lo que hace que su reputación de envío sea suya y no se mezcle con la de los demás.
+</Warning>
 
 ---
 
-## Camino A — un proyecto, N clientes
+## Alternativa — varios clientes en un proyecto
 
-Tu proyecto, tu API key, y los dominios de tus clientes dentro.
+Si prefieres gestionar **una sola credencial** y tus clientes nunca van a necesitar límites ni acceso propios, puedes tenerlos a todos dentro de un proyecto.
+
+|                                   | **Un proyecto por cliente** | **Varios clientes en un proyecto** |
+| --------------------------------- | --------------------------- | ---------------------------------- |
+| Credencial                        | `sk_partner_` + una por cliente | una sola `sk_proj_`            |
+| Dominio y reply domain por cliente | sí                         | sí                                 |
+| Métricas por cliente              | `/v1/partner/projects/:id/stats` | `/v1/domain-stats`            |
+| Rate limits por cliente           | **sí**                      | no, del proyecto entero            |
+| Tu cliente entra al dashboard RQE | **sí**                      | no es posible                      |
+
+En ese modelo el alta de dominios y reply domains es igual, pero con tu propia key. Un proyecto puede tener **varios reply domains**: cada envío resuelve el que corresponde al dominio del remitente.
+
+Para depurar un cliente concreto:
+
+```bash
+curl "https://api.reallyquickemails.com/v1/activity?sender_domain=cliente.com&status=bounced" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+Y para sus métricas agregadas, `GET /v1/domain-stats` — ver [Activity](/api-reference/activity). `GET /domains/health` también funciona acá, y devuelve una entrada por cada dominio de cliente.
 
 <Steps>
   <Step title="Registra el dominio de tu cliente">
@@ -96,37 +197,6 @@ Tu proyecto, tu API key, y los dominios de tus clientes dentro.
 
 ---
 
-## Camino B — un proyecto por cliente
-
-Cada cliente es un proyecto RQE independiente, con sus datos, sus límites y sus estadísticas aislados. Lo creas y operas con una **partner-key** (`sk_partner_...`), que emite RQE al habilitar tu cuenta de partner.
-
-<Steps>
-  <Step title="Crea el proyecto del cliente">
-    ```bash
-    curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
-      -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
-      -H "Content-Type: application/json" \
-      -d '{ "name": "Cliente", "external_key": "tu-id-interno" }'
-    ```
-
-    ```json
-    { "project_id": "…", "slug": "cliente", "api_key": "sk_proj_…" }
-    ```
-
-    Guarda la `api_key` de forma segura. El `external_key` hace la llamada **idempotente**: reintentarla devuelve el mismo proyecto en vez de duplicarlo.
-  </Step>
-
-  <Step title="Configura y opera">
-    Con la `api_key` del cliente, el flujo es el mismo del camino A: registras su dominio, su reply domain y envías. Todo aislado a ese proyecto.
-  </Step>
-
-  <Step title="Gestiona tu cartera">
-    `GET /v1/partner/projects` lista tus clientes y `GET /v1/partner/projects/:id/stats` da las métricas de cada uno.
-
-    Desde un agente de IA, con el [MCP en modo partner](/guides/mcp#modo-partner-gestiona-tu-cartera-de-clientes): `list_clients`, `create_client`, `get_client_stats`.
-  </Step>
-</Steps>
-
 ## Con un agente de IA (MCP)
 
 ```json
@@ -144,7 +214,7 @@ Ver [MCP · modo partner](/guides/mcp#modo-partner-gestiona-tu-cartera-de-client
 
 ## Referencia
 
-- [Dominios](/api-reference/domains) — alta, verificación, reply domain y tracking domain.
+- [Dominios](/api-reference/domains) — alta, verificación, salud, reply domain y tracking domain.
 - [Activity](/api-reference/activity) — `?sender_domain=` y `/v1/domain-stats`.
 - [API pública](/api-reference/public-api) — envío.
 - [Webhooks](/api-reference/webhooks) — `domain.verified` y eventos de email.
