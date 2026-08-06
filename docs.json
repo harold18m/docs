@@ -52,6 +52,7 @@
               "api-reference/campaigns",
               "api-reference/webhooks",
               "api-reference/leads",
+              "api-reference/templates",
               "api-reference/events",
               "api-reference/activity"
             ]
@@ -97,6 +98,7 @@
               "en/api-reference/campaigns",
               "en/api-reference/webhooks",
               "en/api-reference/leads",
+              "en/api-reference/templates",
               "en/api-reference/events",
               "en/api-reference/activity"
             ]
