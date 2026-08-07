@@ -59,6 +59,7 @@ Replace the tunnel URL with your server's. The payload's `is_test` flag distingu
 | `sender.failed` | Individual sender verification failed | `identity_id`, `sender_email` |
 | `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domainverified-domainfailed) |
 | `domain.failed` | Domain verification failed in SES | see [below](#domainverified-domainfailed) |
+| `domain.send_ready` | The domain can already send, even if DKIM hasn't finished propagating | see [below](#domainsendready) |
 
 ## Outbound payload
 
@@ -124,6 +125,29 @@ Differences vs the other outbound events:
   }
 }
 ```
+
+### `domain.send_ready`
+
+Emitted **once**, when the domain becomes able to send. It arrives **before** `domain.verified`: SES enables sending as soon as it recognizes the domain, while DKIM may still be propagating.
+
+Use it to unblock the sender without pretending authentication already finished. If you automate domain onboarding, this is the event that lets you enable sending in your own UI; `domain.verified` arrives later and confirms aligned DKIM signing is also in place.
+
+```json
+{
+  "event": "domain.send_ready",
+  "timestamp": "2026-07-21T14:03:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "domain": "mystore.com",
+    "can_send": true
+  }
+}
+```
+
+<Note>
+  A domain that can send but has no verified DKIM yet delivers worse: without aligned signing, DMARC won't pass via DKIM. Enable sending if you need to, but wait for `domain.verified` before sending volume.
+</Note>
 
 ### `domain.verified` / `domain.failed`
 
