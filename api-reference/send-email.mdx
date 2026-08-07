@@ -34,7 +34,7 @@ Ver más en [Autenticación](/guides/authentication).
 | `senderName`       | string            | No        | Nombre visible del remitente.                                               |
 | `templateId`       | string            | No        | ID de una plantilla almacenada. Si se proporciona, se usa en lugar de `html`. |
 | `data`             | object            | No        | Objeto con variables para sustitución Handlebars en la plantilla o HTML.    |
-| `email_type`       | string            | No        | Tipo de correo (ej. `transactional`, `marketing`, `automation`).            |
+| `email_type`       | string            | No        | Naturaleza del envío: `transactional` (default) o `marketing`. Ver [Tipo de envío](#tipo-de-envio). |
 | `campaign_id`      | string            | No        | UUID de la campaña asociada.                                                |
 | `automation_run_id`| string            | No        | UUID de la ejecución de automatización asociada.                            |
 | `scheduled_at`     | string            | No        | Fecha/hora de envío programado. Ver [Programacion de Envio](#programacion-de-envio). |
@@ -465,9 +465,35 @@ El envío es **asíncrono**: el endpoint encola el correo y responde de inmediat
 
 El resultado final del envío (delivered, bounced, failed) **no viene en esta respuesta**: se consulta vía la [Activity API](/api-reference/activity) usando `email_id`, o se recibe vía [webhooks](/api-reference/webhooks) (`email.send`, `email.delivery`, `email.bounce`, etc.).
 
+## Tipo de envio
+
+El campo `email_type` declara la **naturaleza** del envío, y de eso depende qué supresiones se le aplican.
+
+| Valor | Cuándo usarlo | Qué supresiones lo frenan |
+|---|---|---|
+| `transactional` (default) | Correo 1:1 que el destinatario disparó: código de verificación, recibo, restablecer contraseña, confirmación de cita. | Solo las de **entregabilidad**: rebote duro y queja de spam. |
+| `marketing` | Correo 1:N que inicias tú: campañas, newsletters, promociones. | Las de entregabilidad **y** las bajas voluntarias. |
+
+<Warning>
+Si envías marketing, **declara `email_type: "marketing"` explícitamente**. Una baja es
+consentimiento: solo los envíos declarados como marketing la respetan. Sin el campo, tu envío
+se trata como transaccional y llegaría a personas que pidieron no recibir tus campañas.
+</Warning>
+
+<Info>
+La razón de que el default sea `transactional`: un rebote es señal del buzón (esa dirección no
+existe) y debe frenar todo, pero una baja del newsletter es señal del usuario sobre tus
+campañas — no puede impedir que reciba su código de verificación o el resultado que pidió.
+</Info>
+
+Los valores `campaign` y `automation` se tratan como marketing. Cualquier otro valor
+(`individual`, `welcome`, …) se acepta por compatibilidad y cuenta como transaccional.
+
 ## Destinatario Suprimido
 
-Si el destinatario está en la **lista de supresión** del proyecto (rebote duro o queja previos), el correo **no se encola**: la API responde `200` de inmediato con `suppressed: true` y nada sale hacia el destinatario.
+Si el destinatario está en la **lista de supresión** del proyecto, el correo **no se encola**: la API responde `200` de inmediato con `suppressed: true` y nada sale hacia el destinatario.
+
+Qué supresiones aplican depende del [tipo de envío](#tipo-de-envio): un envío transaccional solo se frena por rebote duro o queja; uno de marketing, además, por las bajas voluntarias.
 
 ```json
 {
