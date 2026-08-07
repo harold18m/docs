@@ -397,7 +397,7 @@ Envía correos masivos en un solo request — hasta **10,000 destinatarios** por
 | `subject`        | string            | Si*       | Asunto del correo. Requerido si no se usa `templateId`.             |
 | `html`           | string            | Si*       | Contenido HTML. Requerido si no se usa `templateId`.                |
 | `templateId`     | string            | Si*       | UUID del template. Alternativa a `subject` + `html`.                |
-| `email_type`     | string            | No        | Tipo de correo. Default: `"marketing"`.                             |
+| `email_type`     | string            | No        | Naturaleza del envío: `transactional` (default) o `marketing`. Ver [Tipo de envío](/api-reference/send-email#tipo-de-envio). |
 | `scheduled_at`   | string            | No        | Fecha ISO 8601 para envío programado.                               |
 | `custom_headers` | object            | No        | Headers a nivel batch. Solo se aplican `List-Unsubscribe` y `List-Unsubscribe-Post`. |
 | `environment`    | string            | No        | Enruta los webhooks al environment configurado. Formato `[a-zA-Z0-9_.-]`, máx 64 caracteres. |
@@ -407,6 +407,13 @@ Envía correos masivos en un solo request — hasta **10,000 destinatarios** por
 <Note>
   *Debes enviar `templateId` O ambos `subject` + `html`.
 </Note>
+
+<Warning>
+  **`email_type` ahora usa `transactional` como default** (antes era `marketing` solo en este
+  endpoint, distinto del resto de la API). Si mandas campañas por `send-batch`, **declara
+  `email_type: "marketing"` explícitamente**: sin el campo, el envío no respeta las bajas
+  voluntarias. Los rebotes y las quejas siguen bloqueando en ambos casos.
+</Warning>
 
 **Estructura de cada recipient:**
 
