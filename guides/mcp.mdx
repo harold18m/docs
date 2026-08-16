@@ -172,6 +172,7 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 | `segments:read` | Segmentos y sus reglas |
 | `segments:write` | Crear segmentos |
 | `templates:read` | Plantillas (metadatos, no el cuerpo del email) |
+| `templates:write` | Crear plantillas de email desde HTML |
 | `automations:read` | Automatizaciones y sus reportes |
 | `automations:write` | Inscribir contactos en automatizaciones activas |
 | `sends:execute` | **Enviar correo real.** El permiso más sensible — concédelo solo si quieres que el asistente envíe por ti |
@@ -252,6 +253,7 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 | `track_event` | `contacts:write` | Registra un evento personalizado (compra, registro…). Puede disparar flujos por evento |
 | `suppress_email` | `contacts:write` | Agrega direcciones a la lista de supresión (dejan de recibir correo) |
 | `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
+| `create_template` | `templates:write` | Crea una plantilla de email desde HTML y devuelve el link para abrirla en el editor. Las imágenes deben ser URLs públicas |
 | `create_campaign` | `campaigns:write` | Crea una campaña **siempre en borrador** — tú la revisas, completas y envías desde la app |
 | `enroll_in_automation` | `automations:write` | Inscribe un contacto en una automatización **activa** — el flujo corre de inmediato y puede enviarle correo |
 
