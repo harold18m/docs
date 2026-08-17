@@ -173,6 +173,7 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 | `segments:read` | Segments and their rules |
 | `segments:write` | Create segments |
 | `templates:read` | Templates (metadata, not the email body) |
+| `templates:write` | Create email templates from HTML |
 | `automations:read` | Automations and their reports |
 | `automations:write` | Enroll contacts into active automations |
 | `sends:execute` | **Send real email.** The most sensitive permission — grant it only if you want the assistant to send on your behalf |
@@ -253,6 +254,7 @@ These modify real data. None of them send email directly, but the ones marked ca
 | `track_event` | `contacts:write` | Tracks a custom event (purchase, signup…). May trigger event-based flows |
 | `suppress_email` | `contacts:write` | Adds addresses to the suppression list (they stop receiving email) |
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
+| `create_template` | `templates:write` | Creates an email template from HTML and returns the link to open it in the editor. Images must be public URLs |
 | `create_campaign` | `campaigns:write` | Creates a campaign **always as a draft** — you review, complete and send it from the app |
 | `enroll_in_automation` | `automations:write` | Enrolls a contact into an **active** automation — the flow runs immediately and may email them |
 
