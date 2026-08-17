@@ -88,6 +88,14 @@ bounce.tudominio.com. CNAME feedback-smtp.us-east-1.amazonses.com.
   Custom MAIL FROM no es obligatorio: `can_send` no lo requiere y los emails llegan igual sin él. Pero mejora el alignment SPF, sobre todo en clientes estrictos como ProtonMail u Outlook empresarial. Recomendado para volúmenes grandes.
 </Info>
 
+<Warning>
+  **El error más común: creer que el SPF solo alcanza.**
+
+  SPF no se evalúa contra el dominio del `From`, sino contra el del **Return-Path**. Sin Custom MAIL FROM, el Return-Path es `@amazonses.com`: tu SPF pasa, pero pasa *para amazonses.com*, así que no alinea con tu `From` y no aporta a DMARC.
+
+  Es decir, agregar `include:amazonses.com` a tu SPF **no sirve por sí solo** si no publicaste también el registro de Return-Path. Quien cubre DMARC en ese escenario es DKIM, no SPF.
+</Warning>
+
 ## El proceso de verificación en RQE
 
 <Steps>
@@ -124,27 +132,119 @@ En tu proveedor DNS (Cloudflare, GoDaddy, Route 53, etc):
 
 </Steps>
 
-## Por qué los emails llegan a spam (más allá de la auth)
+## Reputación: lo que decide el inbox cuando la auth ya está bien
 
-Aunque la auth técnica esté OK, pesan factores reputacionales:
+Tener los 4 registros en verde **no garantiza el inbox**. La autenticación demuestra que el correo es tuyo; la reputación decide si lo quieren. Es el caso más común de soporte: un dominio con todo configurado que igual cae en spam.
+
+<Info>
+  **La reputación es del dominio, no de la IP.**
+
+  Gmail y Outlook evalúan sobre todo el dominio que firma DKIM (el `d=` de la firma). Esa reputación te sigue aunque cambies de proveedor o de servidor. Por eso casi nunca el problema se arregla "cambiando de IP".
+</Info>
 
 | Factor | Impacto |
 |---|---|
-| Dominio nuevo (< 30 días) | Alto — hay que hacer warming |
-| Tasa de bounces > 2% | Alto — limpia tu lista regularmente |
-| Tasa de complaints > 0.1% | Crítico — Gmail/Outlook degradan reputación rápido |
+| Dominio nuevo o dormido (> 60 días sin enviar) | Alto — necesita warming (ver abajo) |
+| Envío irregular (picos y silencios) | Alto — la consistencia pesa más que el volumen |
+| Rebotes > 4% | Alto — frena el ramp y limpia la lista antes de seguir |
+| Rebotes > 5% sostenido | Crítico — el proveedor de envío puede poner la cuenta en revisión |
+| Quejas de spam > 0,1% | Crítico — es el peor indicador posible; el objetivo es < 0,08% |
+| Links que no coinciden con tu dominio | Alto — ver abajo |
 | Sin `List-Unsubscribe` header | Alto — RQE lo agrega automático en campañas y en `/v1/send-template-email`; en envíos directos pásalo con `custom_headers` (`POST /send-email` y `/v1/send-batch`) |
-| Contenido sospechoso | Medio — palabras como "GRATIS", "URGENTE" en mayúsculas, ratio HTML/texto malo |
-| Listas compradas | Crítico — la mayoría son spam traps |
+| Remitente `no-reply@` | Medio — señala comunicación de una vía y baja la confianza |
+| Contenido sospechoso | Medio — mayúsculas tipo "GRATIS"/"URGENTE", correos muy pesados (Gmail recorta sobre 102 KB), sin versión en texto plano |
+| Listas compradas o frías | Crítico — la mayoría contienen spam traps |
+
+### Los links tienen que coincidir con tu dominio
+
+Si el `From` dice `@tudominio.com` pero los enlaces apuntan a otro dominio, los filtros lo leen como señal de suplantación: es una técnica clásica de phishing. Pasa sin querer cuando el open/click tracking envuelve los links con un dominio compartido.
+
+La solución es el **dominio de tracking** (`links.tudominio.com`): los enlaces y el pixel salen alineados con tu `From`. Ver [Tracking](/concepts/tracking).
+
+### Warming: cómo estrenar un dominio
+
+Un dominio nuevo no tiene historial, así que el receptor desconfía por defecto. Warming es **subir el volumen de a poco y de forma constante**, para que el proveedor acumule señales positivas.
+
+Escala de referencia para un dominio nuevo:
+
+| Día | Máximo diario |
+|---|---|
+| 1 | 150 |
+| 2 | 250 |
+| 3 | 400 |
+| 4 | 700 |
+| 5 | 1.000 |
+| 6 | 1.500 |
+| 7 | 2.000 |
+
+De ahí en adelante, subir alrededor de 1,4x por día hasta llegar a tu volumen objetivo. Cuanto más alto el objetivo, más largo el ramp: para decenas de miles diarios, calcula **cuatro a seis semanas**.
 
 <Warning>
-  **Warming**
+  **Estas cifras son techos, no metas.** Superarlas quema el dominio, pero enviar 20 correos por día tampoco lo calienta: sin volumen consistente el proveedor nunca acumula historial y cada envío vuelve a parecer de un remitente desconocido.
 
-  Si tu dominio es nuevo o no envió en > 60 días, haz **warming gradual**: día 1 ~50k emails, día 2 ~75k, día 3+ resto. El [modo por lotes](/api-reference/campaigns) lo automatiza.
+  Durante el warming vigila dos números: **rebotes bajo 4%** y **quejas bajo 0,08%**. Si los superas, baja el ritmo e investiga la causa antes de seguir subiendo.
 </Warning>
+
+Un detalle que decide el resultado: **a quién le envías primero**. Empieza por tus contactos más comprometidos —los que abren, responden y pidieron recibirte— y deja la prospección fría para cuando el dominio ya tenga historial. Las aperturas y respuestas tempranas son la señal que construye la reputación.
+
+### Usa subdominios para aislar el riesgo
+
+Envía lo transaccional y lo de marketing desde subdominios distintos (por ejemplo `envios.tudominio.com` y `noticias.tudominio.com`). Si una campaña genera quejas, el daño queda contenido en ese subdominio y tus correos críticos —contraseñas, comprobantes— siguen llegando.
+
+El mismo principio aplica si envías en nombre de terceros: un subdominio compartido por varios emisores tiene **reputación compartida**, y basta uno con listas malas para arrastrar a todos.
+
+## Cómo probar que tu dominio quedó bien
+
+<Steps>
+
+<Step title="Envía a una casilla externa">
+
+Manda una prueba a un Gmail que **no sea de tu propio dominio**. Un correo que sale de tu dominio y vuelve a tu dominio pasando por un proveedor externo es la firma clásica de la suplantación: Google lo castiga aunque toda la autenticación esté correcta. Es la prueba que más falsos negativos genera.
+
+</Step>
+
+<Step title="Abre 'Mostrar original'">
+
+En Gmail, menú del mensaje → **Mostrar original**. Ahí buscas tres líneas:
+
+```
+SPF:   PASS
+DKIM:  'PASS' with domain tudominio.com
+DMARC: 'PASS'
+```
+
+Lo importante es que el dominio del DKIM sea **el tuyo**, no `amazonses.com`. Si dice `amazonses.com`, falta la identidad de dominio: tu correo se firma, pero no a tu nombre.
+
+</Step>
+
+<Step title="Revisa el 'mediante'">
+
+Si Gmail muestra `tudominio.com mediante amazonses.com`, te falta el Custom MAIL FROM. Llega igual, pero es la línea que hace dudar al lector.
+
+</Step>
+
+</Steps>
+
+<Warning>
+  No pruebes con direcciones inventadas. Los rebotes duros provocados a propósito cuentan igual para tu reputación.
+</Warning>
+
+## ¿Necesitas una IP dedicada?
+
+Casi con seguridad, no. Es la pregunta que más aparece cuando algo cae en spam, y rara vez es la respuesta.
+
+Por defecto tus envíos salen desde un pool de IPs compartidas con reputación ya construida, y te beneficias de ella desde el primer día. Una IP dedicada arranca **sin ningún historial**: hay que calentarla, y hasta entonces entrega peor.
+
+Tiene sentido cuando se cumplen las tres condiciones a la vez:
+
+- **Volumen alto**: del orden de cientos de miles de correos al mes.
+- **Volumen constante** semana a semana. Con envíos esporádicos la IP se "enfría" entre tandas y cada campaña vuelve a partir de cero.
+- **Rebotes y quejas bajo control** (rebotes bajo 2%). Con una tasa alta, una IP nueva se quema durante el propio warm-up.
+
+Si no cumples las tres, el pool compartido va a entregar mejor. Y en ningún caso una IP dedicada compensa una reputación de dominio dañada: eso se arregla con listas limpias y engagement, no con infraestructura.
 
 ## Próximos pasos
 
 - [Dominios](/api-reference/domains) — endpoints para registrar y verificar.
-- [Tracking](/concepts/tracking) — cómo funciona el open/click tracking.
+- [Tracking](/concepts/tracking) — cómo funciona el open/click tracking y el dominio de tracking.
 - [FAQ — ¿por qué van a spam?](/guides/faq) — checklist práctico.

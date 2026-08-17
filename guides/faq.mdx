@@ -97,13 +97,17 @@ Estado visible en Dashboard → Actividad, o consultable vía la [Activity API](
 Causas más comunes:
 
 1. **Dominio no verificado** — DKIM, SPF, DMARC. Verifica con `POST /domains/:domain/verify`.
-2. **Dominio frío** — necesita warming gradual:
-   - Día 1: ~50,000 emails
-   - Día 2: ~75,000 emails
-   - Día 3+: resto
-3. **Contenido sospechoso** — muchos enlaces, mayúsculas, palabras como "GRATIS"/"OFERTA"/"URGENTE", imágenes sin alt.
-4. **Alta tasa rebotes/quejas** — limpia tu lista regularmente. >2% bounces o >0.1% complaints degrada reputación.
-5. **Sin enlace de baja** — ReallyQuickEmails agrega `List-Unsubscribe` automáticamente, pero incluye un enlace visible.
+2. **Dominio frío** — necesita warming gradual: **150 correos el día 1**, 250 el día 2, 400 el día 3, y así hasta unos 2.000 al día 7. Subir de golpe quema el dominio.
+3. **Alta tasa de rebotes o quejas** — limpia tu lista. Sobre 4% de rebotes conviene frenar; sobre 0,1% de quejas la reputación cae rápido.
+4. **Enlaces que no coinciden con tu dominio** — si el `From` es tuyo pero los links apuntan a otro dominio, los filtros lo leen como phishing. Se resuelve con el [dominio de tracking](/concepts/tracking).
+5. **Contenido sospechoso** — muchos enlaces, mayúsculas, palabras como "GRATIS"/"OFERTA"/"URGENTE", imágenes sin alt.
+6. **Sin enlace de baja** — ReallyQuickEmails agrega `List-Unsubscribe` automáticamente, pero incluye un enlace visible.
+
+<Warning>
+  Si todo te aparece verificado y aun así caes en spam, el problema es de **reputación**, no de configuración. Ver [Deliverability y autenticación](/concepts/deliverability).
+
+  Y no uses como prueba un correo que te envías a ti mismo dentro de tu propio dominio: Google lo castiga por parecerse a una suplantación, aunque todo esté bien.
+</Warning>
 
 </Accordion>
 
