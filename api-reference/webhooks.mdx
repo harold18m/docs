@@ -59,6 +59,8 @@ Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload
 | `sender.failed` | La verificación del remitente individual falló | `identity_id`, `sender_email` |
 | `domain.verified` | Un dominio de envío quedó verificado (dominio + DKIM) | ver [abajo](#domainverified-domainfailed) |
 | `domain.failed` | La verificación del dominio falló en SES | ver [abajo](#domainverified-domainfailed) |
+| `suppression.added` | Una dirección entró a tu lista de supresión (rebote duro o queja) | `email`, `reason`, `source`, `description` (ver [abajo](#suppressionadded-suppressionremoved)) |
+| `suppression.removed` | Una dirección salió de tu lista de supresión | `email`, `removed_at` (ver [abajo](#suppressionadded-suppressionremoved)) |
 
 ## Payload outbound
 
@@ -109,7 +111,7 @@ Se emite cuando envías vía API a una dirección que está en la lista de supre
 Particularidades vs los demás eventos outbound:
 
 - Solo se emite para envíos vía **API** — campañas y automatizaciones no lo disparan.
-- Su payload es reducido: el top-level no incluye `is_test` ni `environment`, y `data` trae solo `email`, `activity_id`, `email_type` y `suppressed_at` (no hay `message_id` — el correo nunca salió).
+- Su payload es reducido: el top-level no incluye `is_test` ni `environment`, y no hay `message_id` — el correo nunca salió. `data` trae `email`, `activity_id`, `email_type`, `suppressed_at` y el motivo (`suppression_reason`, `suppression_source`, `suppression_description`).
 
 ```json
 {
@@ -120,10 +122,61 @@ Particularidades vs los demás eventos outbound:
     "email": "destinatario@ejemplo.com",
     "activity_id": "uuid",
     "email_type": "individual",
-    "suppressed_at": "2026-07-05T22:30:00.000Z"
+    "suppressed_at": "2026-07-05T22:30:00.000Z",
+    "suppression_reason": "bounce",
+    "suppression_source": "ses_event",
+    "suppression_description": "The address does not exist"
   }
 }
 ```
+
+### `suppression.added` / `suppression.removed`
+
+`email.suppressed` avisa cuando **intentas enviar** a una dirección ya suprimida. Estos dos avisan **en el momento en que la dirección entra o sale** de la lista, sin esperar a un envío.
+
+Es la diferencia que importa si mantienes tu propio CRM: sin ellos, un contacto se te muere en silencio y solo te enteras en el siguiente intento, que puede ser semanas después.
+
+`suppression.added` se emite cuando RQE suprime automáticamente una dirección tras un **rebote duro** o una **queja de spam**.
+
+```json
+{
+  "event": "suppression.added",
+  "timestamp": "2026-08-19T00:30:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "email": "destinatario@ejemplo.com",
+    "reason": "bounce",
+    "source": "ses_event",
+    "description": "The address does not exist",
+    "bounce_type": "Permanent",
+    "bounce_subtype": "NoEmail",
+    "suppressed_at": "2026-08-19T00:30:00.000Z"
+  }
+}
+```
+
+En una queja, `reason` es `complaint` y en lugar de los campos de rebote llega `complaint_feedback_type`.
+
+`suppression.removed` se emite cuando una dirección se quita de la lista desde el dashboard o la API — útil porque puede haberla reactivado otra persona de tu equipo, no tu sistema.
+
+```json
+{
+  "event": "suppression.removed",
+  "timestamp": "2026-08-19T00:45:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "email": "destinatario@ejemplo.com",
+    "removed_at": "2026-08-19T00:45:00.000Z",
+    "removed_by": "uuid"
+  }
+}
+```
+
+<Note>
+  `suppression.added` **no** se emite para los rebotes de subtipo `OnAccountSuppressionList`: ese es el eco de la lista del proveedor, no un rebote nuevo, y no genera una supresión en tu proyecto.
+
+  En una remoción masiva se emite un evento por dirección hasta un tope de 200; si lo superas queda registrado en los logs.
+</Note>
 
 ### `domain.verified` / `domain.failed`
 
