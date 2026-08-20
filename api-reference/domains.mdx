@@ -48,7 +48,7 @@ Si automatizas el alta de dominios desde tu propia aplicación, este es el recor
 </Info>
 
 <Note>
-  **SPF y DMARC no se validan automáticamente.** Siempre aparecen con `status: "not_set"` en `dns_records`, incluso si están correctamente publicados. `can_send` no los considera. Si necesitas comprobar que tu usuario los configuró, resuélvelos por tu cuenta con una consulta DNS.
+  **SPF y DMARC se verifican cada 6 horas, no en el momento.** Un barrido server-side los resuelve por DNS y escribe su `status` en `dns_records`, así que pueden llegarte `verified` o `mismatch` sin que llames a nada — no necesitas resolverlos por tu cuenta. Dos salvedades: `can_send` no los considera (de ellos dependen la entregabilidad y la alineación DMARC, no el permiso de envío), y `POST /domains/{domain}/verify` reescribe ambos a `not_set` hasta el siguiente barrido.
 </Note>
 
 ---
@@ -287,7 +287,7 @@ curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/dns-records \
 `status` por registro: `not_set`, `propagating`, `mismatch` o `verified`. `last_checked_at` es `null` hasta la primera verificación con `POST /domains/{domain}/verify`.
 
 <Note>
-  SPF y DMARC siempre aparecen con `status: "not_set"`: su propagación no se valida automáticamente.
+  SPF y DMARC no los reporta AWS: los resuelve un barrido propio por DNS cada 6 horas. Tras un `POST /verify` vuelven a `not_set` hasta ese barrido.
 </Note>
 
 ### Codigos de Error

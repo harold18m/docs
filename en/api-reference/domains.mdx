@@ -48,7 +48,7 @@ If you're automating domain onboarding from your own application, here's the ful
 </Info>
 
 <Note>
-  **SPF and DMARC are not validated automatically.** They always show `status: "not_set"` in `dns_records`, even when correctly published, and `can_send` ignores them. If you need to confirm your user set them up, resolve them yourself with a DNS query.
+  **SPF and DMARC are checked every 6 hours, not on demand.** A server-side sweep resolves them over DNS and writes their `status` into `dns_records`, so they can come back `verified` or `mismatch` without you calling anything — you no longer need to resolve them yourself. Two caveats: `can_send` ignores them (they drive deliverability and DMARC alignment, not sending permission), and `POST /domains/{domain}/verify` resets both to `not_set` until the next sweep.
 </Note>
 
 ---
@@ -287,7 +287,7 @@ curl -X GET https://api.reallyquickemails.com/domains/mystore.com/dns-records \
 Per-record `status`: `not_set`, `propagating`, `mismatch`, or `verified`. `last_checked_at` is `null` until the first verification with `POST /domains/{domain}/verify`.
 
 <Note>
-  SPF and DMARC always appear with `status: "not_set"`: their propagation is not validated automatically.
+  AWS does not report SPF or DMARC: a sweep of ours resolves them over DNS every 6 hours. After a `POST /verify` they go back to `not_set` until that sweep.
 </Note>
 
 ### Error Codes
