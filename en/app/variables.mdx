@@ -1,0 +1,84 @@
+---
+title: Editor variables
+description: "Personalize one email for thousands of people: which variables exist in the app and how they resolve at send time."
+---
+
+A variable is a slot filled with each recipient's own data at send time. You write **one** email that says `Hi {{first_name}}`, and every person receives theirs with their name in it.
+
+<Warning>
+Don't build one template per person. If the only thing that changes between recipients is the name, that's **a single email** with `{{first_name}}`. Duplicating the template multiplies what you have to maintain and buys you nothing.
+</Warning>
+
+<Info>
+This page covers **app** variables (campaigns and automations built in the dashboard), which come from each contact's record. If you send over the API and pass your own variables in the payload, see [Templates and Variables](/en/guides/templates) — there you define the names yourself.
+</Info>
+
+---
+
+## Recipient variables
+
+These come from the contact record. They're what you use in the greeting and the subject line.
+
+| Variable | What it holds |
+|---|---|
+| `{{first_name}}` | First name |
+| `{{last_name}}` | Last name |
+| `{{full_name}}` | Full name. If missing, it's built from first + last |
+| `{{email}}` | Recipient's address |
+
+<Warning>
+The variable is `first_name` — not `name`, not `nombre`. Anything invented (`{{company}}`, `{{discount}}`, `{{date}}`) simply resolves to empty at send time.
+</Warning>
+
+## System variables
+
+RQE injects these at send time. They belong in a link's destination, not in body text.
+
+| Variable | What it holds |
+|---|---|
+| `{{unsubscribe_url}}` | Unsubscribe link, unique per recipient |
+| `{{view_in_browser_url}}` | Link to view the email in a browser |
+
+## Shopify variables
+
+Available when the email comes from a store event (abandoned cart, order created). The main ones:
+
+| Variable | What it holds |
+|---|---|
+| `{{abandoned_checkout_url}}` | Link to resume the cart |
+| `{{cart_total_formatted}}` | Cart total with its currency |
+| `{{cart_count}}` | Number of items |
+| `{{first_product_title}}` | Title of the first product in the cart |
+| `{{first_product_image}}` | Image of the first product |
+| `{{first_product_price}}` | Price of the first product |
+
+The editor's variable picker lists the full set, each with a sample value.
+
+---
+
+## The data has to exist
+
+A variable resolves whatever is on the contact record. If you imported a list of bare email addresses, `{{first_name}}` **comes out empty** — it doesn't fail and it doesn't warn: it sends "Hi ," and moves on.
+
+So when you import contacts, map the name column. Contacts coming from Shopify or from an event in your system arrive with the name when the payload includes it.
+
+<Tip>
+Before a large send, use the preview: it renders the email with sample data and makes any gap obvious.
+</Tip>
+
+### When the data might be missing
+
+Double braces don't support a default value: `{{first_name || "friend"}}` doesn't work, it renders literally.
+
+Two options:
+
+1. **Write a line that survives an empty value.** "Hi, we miss you" works with or without a name. "Hi {{first_name}}, we miss you" breaks in half.
+2. **Use the single-brace form with a default** in imported HTML templates: `{first_name || "Hi"}`. The send engine resolves it and falls back to the default text when the data is missing.
+
+---
+
+## Where they work
+
+In the **subject line** and in the **body** — anywhere text goes.
+
+Don't use them as an image source (a photo's `src`): that needs a real URL. And your brand name and logo go in as literal values, not variables: `{{brand_name}}` and `{{brand_logo}}` don't exist.

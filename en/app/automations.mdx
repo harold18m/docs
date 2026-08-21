@@ -1,0 +1,88 @@
+---
+title: Automations
+description: "Flows that run themselves: what starts them, which steps you can chain, and how they branch on a condition."
+---
+
+An automation is a flow that runs on its own when something happens. You send a campaign; an automation sends itself, once per contact that matches the trigger.
+
+The classic case: someone subscribes → gets the welcome email immediately → two days later, a second email only if they didn't open the first.
+
+---
+
+## The trigger
+
+Every flow starts with exactly one trigger. It's what makes a contact enter.
+
+**From your contacts**
+
+| Trigger | When the contact enters |
+|---|---|
+| A new contact is created | On signup |
+| A tag is assigned | When they get that tag |
+| A contact enters a segment | When they start matching the segment's rule |
+| They engage (or don't) with a campaign | Based on opens, clicks, or the absence of them |
+| A custom event occurs | When your system reports that event |
+| Someone replies to an email | On receiving a reply |
+| A contact becomes highly engaged | On accumulating enough interaction |
+
+**From Shopify** (requires a connected store)
+
+| Trigger | When the contact enters |
+|---|---|
+| A customer abandons their cart | When a checkout is left incomplete |
+| A customer makes their first purchase | On their first order |
+| An order is created | On every order |
+| A product is back in stock | On restock |
+| A customer reaches N purchases (VIP) | On hitting the number you set |
+| They leave a checkout without buying | On abandoning without purchase |
+
+**From your system**: an event arrives by webhook.
+
+<Note>
+A segment trigger also supports **enroll now** for the people already inside, instead of waiting for new ones to enter.
+</Note>
+
+---
+
+## The steps
+
+On top of the trigger you chain steps:
+
+| Step | What it does |
+|---|---|
+| Send email | Sends a template |
+| Wait | Pauses the flow for as long as you set before the next step |
+| Split flow | Branches on a condition (below) |
+| A/B split | Branches at random by percentage, to compare two versions |
+| Loop | Repeats a stretch |
+| Manage contact | Adds or removes tags, updates their data |
+| Single-use coupon | Issues a one-time code in Shopify and makes it available to the email that follows |
+| API call | Notifies your system |
+
+## Branching on a condition
+
+The **Split flow** step routes the contact down one branch or another. Available conditions:
+
+- **Email engagement**: opened, clicked, replied, bounced
+- **Tag**: has or doesn't have a tag
+- **Event received**: your system reported a given event
+- **Compare variable**: a contact field against a value
+- **Shopify**: product purchased, order value, first purchase, repeat customer
+
+This is what turns a send into a sequence: *"wait two days; if they didn't open, send the reminder; if they opened and didn't buy, send the testimonial"*.
+
+---
+
+## Editing a live automation
+
+<Warning>
+Changes to an active flow are **not autosaved**, and once published, contacts already running through it see the new flow from their next step onward. There's no undo for that.
+</Warning>
+
+If the change is substantial, pause the flow, edit it, and reactivate — rather than operating on it live.
+
+## Before you activate
+
+- **Every email node needs its template.** A flow with an email node missing a template won't activate.
+- **The trigger goes to exactly one path.** If it has more than one outgoing connection, remove the extra.
+- **Don't end in nothing.** A trigger wired straight to an end node is a flow that does nothing.

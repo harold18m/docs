@@ -1,0 +1,59 @@
+---
+title: Campañas
+description: "Crea, programa y envía un email masivo desde la app, y lee sus resultados."
+---
+
+Una campaña es un envío puntual a una audiencia: una promoción, un anuncio, una newsletter. Lo que se repite solo con un disparador es otra cosa — eso es una [automatización](/app/automatizaciones).
+
+<Info>
+Necesitas un dominio verificado y un remitente confirmado antes de poder enviar. Ver [Dominios y remitentes](/app/dominios-y-remitentes).
+</Info>
+
+---
+
+## El flujo
+
+<Steps>
+<Step title="Escribe el email">
+En el editor. Puedes partir de cero, de una plantilla que ya tengas, de un diseño importado en HTML, o pedírselo al copiloto describiendo qué quieres decir.
+</Step>
+<Step title="Personalízalo">
+Usa `{{first_name}}` en el asunto y el saludo. Es un solo email para toda la audiencia; cada persona recibe el suyo con su dato. Ver [Variables del editor](/app/variables).
+</Step>
+<Step title="Elige la audiencia">
+Un segmento. Puedes ver cuántos contactos tiene antes de confirmar.
+</Step>
+<Step title="Manda una prueba">
+A tu propio correo, antes de disparar. Es el paso que más disgustos evita: un link roto o una imagen que no carga se ven en dos segundos.
+</Step>
+<Step title="Envía o programa">
+Ahora mismo, o en una fecha y hora.
+</Step>
+</Steps>
+
+## Estados
+
+| Estado | Qué significa |
+|---|---|
+| Borrador | La estás armando. No se envió nada |
+| Programada | Tiene fecha futura. Puedes cancelarla y vuelve a borrador |
+| En cola | Salió a enviarse; los correos se están procesando |
+| Enviada | Terminó |
+| Pausada | La detuviste a mitad de envío |
+| Fallida | No pudo completarse |
+
+Una campaña programada se puede cancelar o reprogramar mientras no haya empezado. Una que ya empezó se puede pausar, pero lo enviado, enviado está.
+
+---
+
+## Resultados
+
+Cada campaña muestra entregados, aperturas, clics, rebotes y bajas, y te deja ver la actividad contacto por contacto: quién abrió, quién hizo clic, a quién le rebotó y por qué.
+
+<Note>
+La tasa de apertura es una estimación a la baja. Depende de que el cliente de correo cargue una imagen, y varios (Apple Mail entre ellos) la precargan o la bloquean. El **clic** es la señal fiable.
+</Note>
+
+<Tip>
+Antes de escribir una campaña nueva, revisa si ya tienes un borrador sin enviar. Es más común de lo que parece terminar con una pila de emails hechos que nunca salieron.
+</Tip>
