@@ -1,0 +1,59 @@
+---
+title: Campaigns
+description: "Create, schedule and send a bulk email from the app, and read the results."
+---
+
+A campaign is a one-off send to an audience: a promotion, an announcement, a newsletter. Anything that repeats on its own from a trigger is a different thing — that's an [automation](/en/app/automations).
+
+<Info>
+You need a verified domain and a confirmed sender before you can send. See [Domains and senders](/en/app/domains-and-senders).
+</Info>
+
+---
+
+## The flow
+
+<Steps>
+<Step title="Write the email">
+In the editor. Start from scratch, from a template you already have, from imported HTML, or ask the copilot by describing what you want to say.
+</Step>
+<Step title="Personalize it">
+Use `{{first_name}}` in the subject and the greeting. It's one email for the whole audience; each person gets theirs with their own data. See [Editor variables](/en/app/variables).
+</Step>
+<Step title="Pick the audience">
+A segment. You can see how many contacts it holds before confirming.
+</Step>
+<Step title="Send yourself a test">
+Before you pull the trigger. This is the step that saves the most grief: a broken link or an image that won't load shows up in two seconds.
+</Step>
+<Step title="Send or schedule">
+Right now, or at a date and time.
+</Step>
+</Steps>
+
+## States
+
+| State | What it means |
+|---|---|
+| Draft | You're still building it. Nothing was sent |
+| Scheduled | It has a future date. Cancel it and it returns to draft |
+| Queued | It went out; messages are being processed |
+| Sent | Finished |
+| Paused | You stopped it mid-send |
+| Failed | It couldn't complete |
+
+A scheduled campaign can be cancelled or rescheduled as long as it hasn't started. One that already started can be paused, but whatever went out has gone out.
+
+---
+
+## Results
+
+Each campaign shows delivered, opens, clicks, bounces and unsubscribes, and lets you drill into activity contact by contact: who opened, who clicked, who bounced and why.
+
+<Note>
+Open rate is an undercount. It depends on the mail client loading an image, and several of them (Apple Mail included) preload or block it. **Clicks** are the reliable signal.
+</Note>
+
+<Tip>
+Before writing a new campaign, check whether you already have an unsent draft. Ending up with a pile of finished emails that never went out is more common than it sounds.
+</Tip>

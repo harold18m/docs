@@ -34,6 +34,16 @@
             ]
           },
           {
+            "group": "La app",
+            "pages": [
+              "app/dominios-y-remitentes",
+              "app/campanas",
+              "app/contactos-y-segmentos",
+              "app/variables",
+              "app/automatizaciones"
+            ]
+          },
+          {
             "group": "Conceptos",
             "pages": [
               "concepts/test-mode",
@@ -77,6 +87,16 @@
               "en/guides/segments",
               "en/guides/attachments",
               "en/guides/faq"
+            ]
+          },
+          {
+            "group": "The app",
+            "pages": [
+              "en/app/domains-and-senders",
+              "en/app/campaigns",
+              "en/app/contacts-and-segments",
+              "en/app/variables",
+              "en/app/automations"
             ]
           },
           {
