@@ -114,12 +114,13 @@ Most common causes:
 <Accordion title="How do I verify my domain?">
 
 1. Register the domain with `POST /domains/register`
-2. Configure the 7 DNS records at your provider:
+2. Configure the 8 DNS records at your provider:
    - 1 TXT domain verification
    - 3 CNAME DKIM
    - 1 TXT SPF
    - 1 TXT DMARC
-   - 1 CNAME Return-Path
+   - 1 MX `send` (Return-Path)
+   - 1 TXT `send` (Return-Path)
 3. Wait 5–10 min for propagation
 4. Verify with `POST /domains/:domain/verify`
 5. When `can_send: true`, you're set

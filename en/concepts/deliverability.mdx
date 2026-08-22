@@ -61,7 +61,7 @@ The policy on what to do if SPF or DKIM fail. It's the strongest of the 3 agains
 Example:
 
 ```
-_dmarc.yourdomain.com. TXT "v=DMARC1; p=quarantine; rua=mailto:d-<id>@dmarc.reallyquickemails.com; pct=100"
+_dmarc.yourdomain.com. TXT "v=DMARC1; p=none; rua=mailto:d-<id>@dmarc.reallyquickemails.com"
 ```
 
 `pct=100` applies the policy to 100% of traffic. It's common to start with `pct=10` and increase gradually.
@@ -81,7 +81,8 @@ With a **Custom MAIL FROM domain** (in RQE, the `bounce.yourdomain.com` subdomai
 RQE configures it with a single CNAME record, included among the 7 that are generated when you register the domain:
 
 ```
-bounce.yourdomain.com. CNAME feedback-smtp.us-east-1.amazonses.com.
+send.yourdomain.com. MX 10 feedback-smtp.us-east-1.amazonses.com.
+send.yourdomain.com. TXT "v=spf1 include:amazonses.com ~all"
 ```
 
 <Info>
@@ -102,11 +103,11 @@ bounce.yourdomain.com. CNAME feedback-smtp.us-east-1.amazonses.com.
 
 <Step title="Register the domain">
 
-`POST /domains/register` with `{ "domain": "yourdomain.com", "sender_name": "My Company", "sender_email": "noreply@yourdomain.com" }` (all three fields are required). RQE generates the 7 DNS records and returns them. See [Domains](/en/api-reference/domains).
+`POST /domains/register` with `{ "domain": "yourdomain.com", "sender_name": "My Company", "sender_email": "noreply@yourdomain.com" }` (all three fields are required). RQE generates the 8 DNS records and returns them. See [Domains](/en/api-reference/domains).
 
 </Step>
 
-<Step title="Configure the 7 records">
+<Step title="Configure the 8 records">
 
 In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
 
@@ -114,7 +115,7 @@ In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
 - 3 CNAME DKIM
 - 1 TXT SPF (merge with existing if applicable)
 - 1 TXT DMARC
-- 1 CNAME Return-Path (Custom MAIL FROM)
+- 1 MX `send` + 1 TXT `send` (Return-Path / Custom MAIL FROM)
 
 </Step>
 
@@ -126,7 +127,7 @@ In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
 
 <Step title="Verify">
 
-`POST /domains/:domain/verify` checks the domain verification, the 3 DKIM CNAMEs, and the MAIL FROM CNAME (SPF and DMARC are not validated automatically). With the domain and DKIM verified, the response includes `can_send: true` and you can send from `*@yourdomain.com`.
+`POST /domains/:domain/verify` checks the domain verification, the 3 DKIM CNAMEs, and the MAIL FROM records (SPF and DMARC are not validated there: a sweep of ours resolves them every 6 hours). With the domain and DKIM verified, the response includes `can_send: true` and you can send from `*@yourdomain.com`.
 
 </Step>
 

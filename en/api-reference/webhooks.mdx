@@ -59,6 +59,7 @@ Replace the tunnel URL with your server's. The payload's `is_test` flag distingu
 | `sender.failed` | Individual sender verification failed | `identity_id`, `sender_email` |
 | `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domainverified-domainfailed) |
 | `domain.failed` | Domain verification failed in SES | see [below](#domainverified-domainfailed) |
+| `domain.send_ready` | The domain can already send, even if DKIM hasn't finished propagating | see [below](#domainsendready) |
 | `suppression.added` | An address entered your suppression list (hard bounce or complaint) | `email`, `reason`, `source`, `description` (see [below](#suppressionadded-suppressionremoved)) |
 | `suppression.removed` | An address left your suppression list | `email`, `removed_at` (see [below](#suppressionadded-suppressionremoved)) |
 
@@ -176,6 +177,29 @@ For a complaint, `reason` is `complaint` and `complaint_feedback_type` arrives i
   `suppression.added` is **not** emitted for bounces with subtype `OnAccountSuppressionList`: that is an echo of the provider's own list, not a new bounce, and it does not create a suppression in your project.
 
   On a bulk removal one event is emitted per address up to a cap of 200; going over that is recorded in the logs.
+</Note>
+
+### `domain.send_ready`
+
+Emitted **once**, when the domain becomes able to send. It arrives **before** `domain.verified`: SES enables sending as soon as it recognizes the domain, while DKIM may still be propagating.
+
+Use it to unblock the sender without pretending authentication already finished. If you automate domain onboarding, this is the event that lets you enable sending in your own UI; `domain.verified` arrives later and confirms aligned DKIM signing is also in place.
+
+```json
+{
+  "event": "domain.send_ready",
+  "timestamp": "2026-07-21T14:03:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "domain": "mystore.com",
+    "can_send": true
+  }
+}
+```
+
+<Note>
+  A domain that can send but has no verified DKIM yet delivers worse: without aligned signing, DMARC won't pass via DKIM. Enable sending if you need to, but wait for `domain.verified` before sending volume.
 </Note>
 
 ### `domain.verified` / `domain.failed`

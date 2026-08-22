@@ -59,6 +59,7 @@ Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload
 | `sender.failed` | La verificación del remitente individual falló | `identity_id`, `sender_email` |
 | `domain.verified` | Un dominio de envío quedó verificado (dominio + DKIM) | ver [abajo](#domainverified-domainfailed) |
 | `domain.failed` | La verificación del dominio falló en SES | ver [abajo](#domainverified-domainfailed) |
+| `domain.send_ready` | El dominio ya puede enviar, aunque DKIM todavía no termine de propagar | ver [abajo](#domainsendready) |
 | `suppression.added` | Una dirección entró a tu lista de supresión (rebote duro o queja) | `email`, `reason`, `source`, `description` (ver [abajo](#suppressionadded-suppressionremoved)) |
 | `suppression.removed` | Una dirección salió de tu lista de supresión | `email`, `removed_at` (ver [abajo](#suppressionadded-suppressionremoved)) |
 
@@ -176,6 +177,29 @@ En una queja, `reason` es `complaint` y en lugar de los campos de rebote llega `
   `suppression.added` **no** se emite para los rebotes de subtipo `OnAccountSuppressionList`: ese es el eco de la lista del proveedor, no un rebote nuevo, y no genera una supresión en tu proyecto.
 
   En una remoción masiva se emite un evento por dirección hasta un tope de 200; si lo superas queda registrado en los logs.
+</Note>
+
+### `domain.send_ready`
+
+Se emite **una sola vez**, cuando el dominio pasa a poder enviar. Llega **antes** que `domain.verified`: SES habilita el envío en cuanto reconoce el dominio, mientras DKIM puede seguir propagando un rato más.
+
+Sirve para desbloquear al remitente sin tener que fingir que la autenticación ya terminó. Si automatizas altas de dominio, este es el evento que te deja habilitar el envío en tu propia UI; `domain.verified` llega después y confirma que además hay firma DKIM alineada.
+
+```json
+{
+  "event": "domain.send_ready",
+  "timestamp": "2026-07-21T14:03:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "domain": "mitienda.com",
+    "can_send": true
+  }
+}
+```
+
+<Note>
+  Un dominio que puede enviar pero todavía no tiene DKIM verificado entrega peor: sin firma alineada, DMARC no pasa por DKIM. Habilita el envío si lo necesitas, pero espera a `domain.verified` antes de mandar volumen.
 </Note>
 
 ### `domain.verified` / `domain.failed`

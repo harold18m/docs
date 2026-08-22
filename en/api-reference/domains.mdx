@@ -26,7 +26,7 @@ If you're automating domain onboarding from your own application, here's the ful
 
 <Steps>
   <Step title="Register the domain">
-    `POST /domains/register` returns all 7 DNS records in `dns_records`, ready to display.
+    `POST /domains/register` returns all 8 DNS records in `dns_records`, ready to display.
   </Step>
   <Step title="Offer one-click setup">
     `GET /domains/{domain}/domain-connect`. If it returns `supported: true`, redirect the user to `apply_url` and their provider creates the records automatically. Otherwise, show the records for manual setup.
@@ -153,16 +153,25 @@ curl -X POST https://api.reallyquickemails.com/domains/register \
       "id": "e6f70819-2a3b-44c5-d6e7-f8091a2b3c4d",
       "record_type": "TXT",
       "name": "_dmarc",
-      "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@mystore.com",
+      "value": "v=DMARC1; p=none; rua=mailto:d-a1b2c3d4-e5f6-7890-abcd-ef1234567890@dmarc.reallyquickemails.com",
       "purpose": "dmarc",
       "status": "not_set",
       "ttl_hint": 300
     },
     {
       "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
-      "record_type": "CNAME",
-      "name": "bounce",
-      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "record_type": "MX",
+      "name": "send",
+      "value": "10 feedback-smtp.us-east-1.amazonses.com",
+      "purpose": "return_path",
+      "status": "not_set",
+      "ttl_hint": 300
+    },
+    {
+      "id": "0819192a-4c5d-46e7-f809-1a2b3c4d5e6f",
+      "record_type": "TXT",
+      "name": "send",
+      "value": "v=spf1 include:amazonses.com ~all",
       "purpose": "return_path",
       "status": "not_set",
       "ttl_hint": 300
@@ -171,7 +180,7 @@ curl -X POST https://api.reallyquickemails.com/domains/register \
 }
 ```
 
-Each DNS record includes: `id`, `record_type` (`TXT` or `CNAME`), `name`, `value`, `purpose` (`ses_verification`, `dkim`, `spf`, `dmarc`, `return_path`), `status`, and `ttl_hint` (suggested TTL in seconds).
+Each DNS record includes: `id`, `record_type` (`TXT`, `CNAME` or `MX`), `name`, `value`, `purpose` (`ses_verification`, `dkim`, `spf`, `dmarc`, `return_path`), `status`, and `ttl_hint` (suggested TTL in seconds).
 
 `status` values: `not_set`, `propagating`, `mismatch`, `verified`.
 
@@ -182,8 +191,13 @@ Each DNS record includes: `id`, `record_type` (`TXT` or `CNAME`), `name`, `value
 | 1 | TXT | `_amazonses` | Domain verification | Value generated automatically on registration |
 | 2-4 | CNAME | `{token}._domainkey` | DKIM | 3 records, tokens generated automatically |
 | 5 | TXT | `@` (domain root) | SPF | `v=spf1 include:amazonses.com ~all` |
-| 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@{domain}` |
-| 7 | CNAME | `bounce` | Return-Path | Points to `feedback-smtp.us-east-1.amazonses.com` |
+| 6 | TXT | `_dmarc` | DMARC | `v=DMARC1; p=none; rua=mailto:d-{identity_id}@dmarc.reallyquickemails.com` |
+| 7 | MX | `send` | Return-Path | `10 feedback-smtp.us-east-1.amazonses.com` |
+| 8 | TXT | `send` | Return-Path | `v=spf1 include:amazonses.com ~all` |
+
+<Note>
+  The DMARC `rua` points to an RQE mailbox rather than one of your own: that's how we receive your aggregate reports and surface them on the domain detail page. Domains start at `p=none` (monitoring only) so legitimate mail from your other tools isn't sent to spam while alignment settles.
+</Note>
 
 <Note>
   Names are relative to the domain. With domain `mystore.com`, the `_amazonses` record is configured as `_amazonses.mystore.com`. Some providers append the domain automatically, so you only enter `_amazonses`.
@@ -272,9 +286,9 @@ curl -X GET https://api.reallyquickemails.com/domains/mystore.com/dns-records \
     },
     {
       "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
-      "record_type": "CNAME",
-      "name": "bounce",
-      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "record_type": "MX",
+      "name": "send",
+      "value": "10 feedback-smtp.us-east-1.amazonses.com",
       "purpose": "return_path",
       "status": "not_set",
       "ttl_hint": 300,
@@ -364,9 +378,9 @@ curl -X POST https://api.reallyquickemails.com/domains/mystore.com/verify \
     },
     {
       "id": "f708192a-3b4c-45d6-e7f8-091a2b3c4d5e",
-      "record_type": "CNAME",
-      "name": "bounce",
-      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "record_type": "MX",
+      "name": "send",
+      "value": "10 feedback-smtp.us-east-1.amazonses.com",
       "purpose": "return_path",
       "status": "propagating",
       "last_checked_at": "2025-03-10T18:45:00.000Z"
@@ -382,7 +396,7 @@ Verification checks three things:
 
 1. **Domain verification** — The `_amazonses` TXT record is configured.
 2. **DKIM** — All 3 DKIM CNAME records are configured and propagated.
-3. **MAIL FROM** — The Return-Path CNAME record (`bounce`) is configured.
+3. **MAIL FROM** — The Return-Path records on `send` (MX and TXT) are configured.
 
 Key fields:
 
@@ -681,7 +695,7 @@ Domains come back **sorted by volume**: the ones where fixing pays off most come
 
 ## GET /domains/:domain/domain-connect
 
-One-click DNS setup. If the domain's DNS provider supports the [Domain Connect](https://www.domainconnect.org/) standard, this returns a signed URL that creates all 7 records automatically: the end user just confirms on their provider's screen, with nothing to copy by hand.
+One-click DNS setup. If the domain's DNS provider supports the [Domain Connect](https://www.domainconnect.org/) standard, this returns a signed URL that creates all 8 records automatically: the end user just confirms on their provider's screen, with nothing to copy by hand.
 
 Use it right after `POST /domains/register`. If the provider doesn't support it, fall back to showing the `dns_records` for manual setup.
 
