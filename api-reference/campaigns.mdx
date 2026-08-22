@@ -363,13 +363,19 @@ Las variables del CSV tienen prioridad sobre los valores por defecto.
 
 ## Warming de dominio
 
-Para envíos grandes (>50,000 emails) desde un dominio nuevo o con poco historial, envía gradualmente:
+Desde un dominio nuevo o con poco historial, sube el volumen de a poco. Escala de referencia:
 
-| Día | Volumen sugerido |
+| Día | Máximo sugerido |
 |---|---|
-| Día 1 | ~50,000 |
-| Día 2 | ~75,000 |
-| Día 3+ | Resto |
+| 1 | 150 |
+| 2 | 250 |
+| 3 | 400 |
+| 4 | 700 |
+| 5 | 1.000 |
+| 6 | 1.500 |
+| 7 | 2.000 |
+
+De ahí en adelante, alrededor de 1,4x por día hasta tu volumen objetivo. Para decenas de miles diarios, calcula cuatro a seis semanas de ramp.
 
 Usa el **modo por lotes** para automatizar esto. Enviar todo de golpe desde un dominio frío puede marcarte como spam en Gmail, Outlook y otros proveedores.
 
@@ -377,7 +383,7 @@ Ver más en [Deliverability y autenticación](/concepts/deliverability).
 
 ---
 
-## Estados de una campana
+## Estados de una campaña
 
 | Estado | Descripción |
 |---|---|

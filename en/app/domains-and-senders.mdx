@@ -1,0 +1,80 @@
+---
+title: Domains and senders
+description: "Verify your domain and create senders in the app: the two requirements before any email goes out."
+---
+
+Before you can send, you need two things: a **verified domain** (proof to inbox providers that the email really comes from you) and a **sender** (the actual address in the "From:" line). Without both, nothing goes out.
+
+<Info>
+This page covers the app. To do it over the API instead, see [Domains](/en/api-reference/domains).
+</Info>
+
+---
+
+## Verify a domain
+
+Go to **Settings → Domains** and add the domain you'll send from (say `yourcompany.com`). The app returns the DNS records you need to publish with your provider.
+
+<Steps>
+<Step title="Copy the records">
+One by one, all of them as a tab-separated block, or exported as CSV to hand to whoever manages your DNS.
+</Step>
+<Step title="Publish them at your DNS provider">
+Cloudflare, Route 53, GoDaddy, your hosting panel — wherever your domain's records live.
+</Step>
+<Step title="Wait for propagation">
+DNS takes time. A few minutes with most providers, a few hours at worst. The app checks the status on its own.
+</Step>
+</Steps>
+
+### What each record does
+
+| Record | Type | Purpose |
+|---|---|---|
+| DKIM | CNAME | Cryptographically signs every email. This is what proves the message came from your domain and wasn't altered. |
+| SPF | TXT | Declares which servers may send on your behalf. |
+| DMARC | TXT | Tells receivers what to do with mail that fails SPF and DKIM, and where to send reports. |
+
+Two details break verification more often than anything else:
+
+<Warning>
+**SPF: if you already have an SPF record, don't create another one.** A domain only allows one. Add `include:amazonses.com` to the existing record.
+
+**DMARC: same rule.** Only one DMARC record per domain. If you already have one, don't add a second.
+</Warning>
+
+<Note>
+Each record's **name** is relative to your domain. If your provider asks for the full name (FQDN), append your domain. Pasting an FQDN where a relative name is expected produces duplicated names like `_amazonses.yourdomain.com.yourdomain.com`, and verification never passes.
+</Note>
+
+### Status
+
+DKIM is verified automatically by the sending provider once it sees the published records. SPF and DMARC aren't verified the same way — those reports come from the receiving side — so RQE queries your DNS and checks the contents directly.
+
+While something is missing you'll see **partial verification**; once everything is in place, **ready to send**.
+
+---
+
+## Create a sender
+
+A sender is the address your recipient sees in the "From:" line — `hello@yourcompany.com`, `sales@yourcompany.com`. Create them under **Settings → Senders**.
+
+Each sender is verified by email: RQE sends a message to that address and you confirm from there.
+
+<Warning>
+An unverified sender **cannot be activated**. This is the most common cause of "I set everything up and still can't send": the domain went green, but the specific address was never confirmed.
+</Warning>
+
+You can have several senders per project and pick which one each campaign or automation uses.
+
+---
+
+## If something won't verify
+
+1. **Are the records published on the right domain?** A typo in a record name is invisible at a glance. Compare against the app, character by character.
+2. **Did you duplicate SPF or DMARC?** See the warning above. This is the number one cause.
+3. **Did you paste an FQDN where a relative name belongs?** See the note above.
+4. **Has enough time passed?** If you published two minutes ago, wait.
+5. **Is the sender verified too, not just the domain?** They're two separate steps.
+
+With the domain green and the sender confirmed, you're ready: continue with [Campaigns](/en/app/campaigns).

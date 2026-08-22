@@ -1,0 +1,168 @@
+---
+title: Plantillas
+description: "Crea, lista, actualiza y borra plantillas de email vía API."
+---
+
+Gestiona las plantillas de tu proyecto sin entrar a la app. Útil cuando tus emails viven en tu propio sistema y quieres versionarlos desde ahí, o cuando envías por API y nunca abres el editor.
+
+Una plantilla creada por API se usa igual que una creada en la app: la envías con [`POST /v1/send-template-email`](/api-reference/public-api#post-v1send-template-email) y puedes abrirla en el editor visual cuando quieras.
+
+## Autenticacion
+
+Todas las peticiones requieren un Bearer token:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Ver más en [API Pública v1](/api-reference/public-api#autenticacion).
+
+---
+
+## Endpoints
+
+### POST /v1/templates
+
+Crea una plantilla a partir de HTML.
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| name | string | Sí | Nombre con el que aparece en la app |
+| html | string | Sí | HTML del email, tal cual quieres que se envíe |
+| subject | string | No | Asunto por defecto (puedes sobrescribirlo al enviar) |
+| description | string | No | Nota interna |
+| preheader | string | No | Texto de vista previa en la bandeja |
+
+El HTML se guarda tal como lo mandas: no lo reescribimos ni le inyectamos estilos. Puede incluir variables (`{{first_name}}`) — se sustituyen al enviar, no al crear.
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/templates \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Confirmación de pedido",
+    "subject": "Tu pedido {{order_id}} está confirmado",
+    "html": "<html><body><h1>Gracias {{first_name}}</h1></body></html>"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "8f3a1c2e-...",
+    "internal_id": 42,
+    "name": "Confirmación de pedido",
+    "subject": "Tu pedido {{order_id}} está confirmado",
+    "description": null,
+    "preheader": null,
+    "html": "<html><body><h1>Gracias {{first_name}}</h1></body></html>",
+    "created_at": "2026-08-06T18:20:11.482Z",
+    "updated_at": "2026-08-06T18:20:11.482Z"
+  }
+}
+```
+
+<Note>
+Guarda el `id` o el `internal_id`: son los dos identificadores que acepta `send-template-email`. El `internal_id` es un número corto por proyecto, cómodo si lo vas a escribir a mano en tu configuración.
+</Note>
+
+---
+
+### GET /v1/templates
+
+Lista las plantillas del proyecto, de la más recientemente modificada a la más antigua.
+
+| Parámetro | Tipo | Default | Descripción |
+|---|---|---|---|
+| page | number | 1 | Página |
+| per_page | number | 50 | Máximo 200 |
+| search | string | — | Filtra por nombre (coincidencia parcial) |
+
+```bash
+curl "https://api.reallyquickemails.com/v1/templates?search=pedido" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+El listado **no incluye el HTML** (una página de 50 plantillas serían megas de respuesta). El campo `html` viene vacío; pide la plantilla individual para obtener el cuerpo.
+
+---
+
+### GET /v1/templates/:id
+
+Devuelve una plantilla con su HTML. El `:id` puede ser el UUID o el `internal_id` numérico.
+
+```bash
+curl https://api.reallyquickemails.com/v1/templates/42 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+---
+
+### PUT /v1/templates/:id
+
+Actualiza una plantilla. Manda solo los campos que cambian: `name`, `html`, `subject`, `description` o `preheader`.
+
+```bash
+curl -X PUT https://api.reallyquickemails.com/v1/templates/42 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "html": "<html><body><h1>Versión nueva</h1></body></html>" }'
+```
+
+Los cambios aplican a los envíos siguientes. Los emails ya enviados no se modifican.
+
+---
+
+### DELETE /v1/templates/:id
+
+Borra una plantilla.
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/templates/42 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+Si la plantilla está en uso por una campaña o por un paso de automatización, la respuesta es **409** y no se borra nada:
+
+```json
+{
+  "error": "Template is in use by 2 automation node(s). Deleting it would leave them without content. Retry with ?force=true to delete anyway.",
+  "code": "TEMPLATE_IN_USE",
+  "automation_nodes": 2,
+  "campaigns": 0
+}
+```
+
+<Warning>
+`?force=true` borra igual. Las automatizaciones y campañas que la usaban quedan **sin contenido** y sus envíos saldrán vacíos: cámbiales la plantilla antes de forzar.
+</Warning>
+
+---
+
+## Codigos de error
+
+| Código | Significado |
+|---|---|
+| `400` | Falta `name` o `html`, o el `:id` no es un UUID ni un número |
+| `401` | API key ausente o inválida |
+| `404` | La plantilla no existe en este proyecto |
+| `409` | La plantilla está en uso (ver `DELETE`) |
+
+---
+
+## Enviar la plantilla
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template_internal_id": 42,
+    "recipient_email": "cliente@ejemplo.com",
+    "sender_email": "hola@tudominio.com",
+    "variables": { "first_name": "Ana", "order_id": "A-1043" }
+  }'
+```
+
+Detalle de variables, loops y helpers en [Plantillas y variables](/guides/templates).

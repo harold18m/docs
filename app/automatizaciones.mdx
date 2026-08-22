@@ -1,0 +1,88 @@
+---
+title: Automatizaciones
+description: "Flujos que se disparan solos: qué los inicia, qué pasos puedes encadenar y cómo se dividen por condición."
+---
+
+Una automatización es un flujo que corre solo cuando pasa algo. La campaña la mandas tú; la automatización se manda sola, una vez por cada contacto que cumple el disparador.
+
+El caso típico: alguien se suscribe → recibe la bienvenida al instante → dos días después, un segundo email solo si no abrió el primero.
+
+---
+
+## El disparador
+
+Cada flujo empieza con un disparador, y solo uno. Es lo que hace entrar a un contacto.
+
+**De tus contactos**
+
+| Disparador | Cuándo entra el contacto |
+|---|---|
+| Creas un nuevo contacto | Al darse de alta |
+| Se asigna una etiqueta | Al recibir esa etiqueta |
+| Contacto entra a un segmento | Al empezar a cumplir la regla del segmento |
+| Interactúa (o no) con una campaña | Según haya abierto, hecho clic, o no |
+| Ocurre un evento personalizado | Cuando tu sistema informa ese evento |
+| Alguien responde un email | Al recibir una respuesta |
+| Un contacto se vuelve muy comprometido | Al acumular suficiente interacción |
+
+**De Shopify** (requiere la tienda conectada)
+
+| Disparador | Cuándo entra el contacto |
+|---|---|
+| Un cliente abandona su carrito | Al quedar un checkout sin completar |
+| Un cliente hace su primera compra | En su primera orden |
+| Se crea una orden | En cada orden |
+| Un producto vuelve a stock | Al reponerse |
+| Un cliente llega a N compras (VIP) | Al alcanzar el número que definas |
+| Deja un checkout sin comprar | Al abandonar sin comprar |
+
+**De tu sistema**: llega un evento por webhook.
+
+<Note>
+Un disparador de segmento admite además **enrolar ahora** a quienes ya están adentro, sin esperar a que entren nuevos.
+</Note>
+
+---
+
+## Los pasos
+
+Sobre el disparador vas encadenando pasos:
+
+| Paso | Qué hace |
+|---|---|
+| Enviar email | Manda una plantilla |
+| Esperar | Pausa el flujo el tiempo que definas antes del paso siguiente |
+| Dividir flujo | Bifurca según una condición (abajo) |
+| División A/B | Bifurca al azar por porcentaje, para comparar dos versiones |
+| Bucle | Repite un tramo |
+| Gestionar contacto | Le pone o quita etiquetas, actualiza sus datos |
+| Cupón único | Emite un código de un solo uso en Shopify y lo deja disponible para el email que sigue |
+| Llamada a API | Avisa a tu sistema |
+
+## Dividir por condición
+
+El paso **Dividir flujo** manda al contacto por una rama u otra. Las condiciones disponibles:
+
+- **Interacción con el email**: abrió, hizo clic, respondió, rebotó
+- **Etiqueta**: tiene o no tiene una etiqueta
+- **Evento recibido**: tu sistema informó cierto evento
+- **Comparar variable**: un dato del contacto contra un valor
+- **Shopify**: producto comprado, valor del pedido, primera compra, cliente recurrente
+
+Es lo que convierte un envío en secuencia: *"esperá dos días; si no abrió, mandale el recordatorio; si abrió y no compró, mandale el testimonio"*.
+
+---
+
+## Editar una automatización activa
+
+<Warning>
+Los cambios en un flujo activo **no se autoguardan**, y al publicarlos los contactos que ya están corriendo ven el flujo nuevo desde su siguiente paso. No hay forma de revertir eso.
+</Warning>
+
+Si el cambio es de fondo, conviene pausar el flujo, editarlo y reactivarlo, en vez de operarlo en vivo.
+
+## Antes de activar
+
+- **Cada nodo de email necesita su plantilla.** Un flujo con un email sin plantilla no se activa.
+- **El disparador va a un solo camino.** Si tiene más de una conexión de salida, elimina la sobrante.
+- **Que no termine en la nada.** Un disparador conectado directo al fin es un flujo que no hace nada.

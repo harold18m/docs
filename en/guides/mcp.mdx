@@ -3,7 +3,7 @@ title: MCP Server
 description: "Connect your ReallyQuickEmails account to Claude, Cursor or another AI client and operate your project by chatting."
 ---
 
-The ReallyQuickEmails **MCP server** exposes your project through the [Model Context Protocol](https://modelcontextprotocol.io). Connect it to Claude Desktop, Cursor or Claude Code and your assistant can query your contacts, campaigns, metrics and automations, answering in natural language.
+The ReallyQuickEmails **MCP server** exposes your project through the [Model Context Protocol](https://modelcontextprotocol.io). Connect it to claude.ai, Claude Desktop, Cursor or Claude Code and your assistant can query your contacts, campaigns, metrics and automations, answering in natural language.
 
 <Info>
   Your assistant can **query** data, **modify** contacts and segments, **create draft campaigns** (which you review and send from the app), **enroll contacts into automations**, and even **send email** — each capability behind its own permission, granted by you when creating the key. **Building complete automations by chat is coming soon.**
@@ -16,6 +16,51 @@ The connection is secure by design:
 - **You can revoke it any time** and access is cut on the next call.
 
 ---
+
+## From claude.ai (fastest)
+
+On claude.ai you don't need to create a key by hand or edit any config file:
+
+<Steps>
+
+<Step title="Add the connector">
+
+Open **Settings → Connectors → Add custom connector** and paste the URL:
+
+```
+https://mcp.reallyquickemails.com/mcp
+```
+
+</Step>
+
+<Step title="Authorize">
+
+Claude takes you to a ReallyQuickEmails screen. Sign in if you weren't already, pick the
+**project** you want to connect, check whether you also want to allow **creating and editing**,
+and click **Authorize**.
+
+That's it: the app issues the key for you and the connector is ready.
+
+</Step>
+
+</Steps>
+
+<Info>
+  The issued key shows up under **Integrations → API Keys → MCP Keys**, named after the client you
+  connected. To disconnect the connector, revoke it there.
+</Info>
+
+<Warning>
+  This path **never grants `sends:execute`** (sending real email). If you want your assistant to
+  send on your behalf, create the key by hand with that permission and connect using the method
+  below.
+</Warning>
+
+---
+
+## With a key (Claude Desktop, Cursor, Claude Code)
+
+Clients that accept headers in their config use your MCP key directly.
 
 <Steps>
 
@@ -128,6 +173,7 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 | `segments:read` | Segments and their rules |
 | `segments:write` | Create segments |
 | `templates:read` | Templates (metadata, not the email body) |
+| `templates:write` | Create email templates from HTML |
 | `automations:read` | Automations and their reports |
 | `automations:write` | Enroll contacts into active automations |
 | `sends:execute` | **Send real email.** The most sensitive permission — grant it only if you want the assistant to send on your behalf |
@@ -208,6 +254,7 @@ These modify real data. None of them send email directly, but the ones marked ca
 | `track_event` | `contacts:write` | Tracks a custom event (purchase, signup…). May trigger event-based flows |
 | `suppress_email` | `contacts:write` | Adds addresses to the suppression list (they stop receiving email) |
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
+| `create_template` | `templates:write` | Creates an email template from HTML and returns the link to open it in the editor. Images must be public URLs |
 | `create_campaign` | `campaigns:write` | Creates a campaign **always as a draft** — you review, complete and send it from the app |
 | `enroll_in_automation` | `automations:write` | Enrolls a contact into an **active** automation — the flow runs immediately and may email them |
 
@@ -284,6 +331,10 @@ Not yet — that is **coming soon**. Today it can enroll contacts into automatio
 
 <Accordion title="Can I have multiple keys?">
 Yes. One key per client or per use, each with the minimum permissions, is good practice so you can revoke one without affecting the rest.
+</Accordion>
+
+<Accordion title="Why won't claude.ai let me paste the key?">
+Because it doesn't need one. claude.ai connectors have no field for headers: they connect over OAuth, so instead of asking for a key they take you to a ReallyQuickEmails screen where you pick the project and permissions, and the app issues the key for you. It's the same key type (`rqe_mcp_...`), listed and revoked in the same place.
 </Accordion>
 
 </AccordionGroup>

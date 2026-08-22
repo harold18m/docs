@@ -1,9 +1,15 @@
 ---
 title: Adjuntos
-description: "Adjunta archivos (PDF, .ics) a tus envíos por URL o base64."
+description: "Adjunta archivos (MP3, PDF, .ics) a tus envíos por URL o base64."
 ---
 
 Adjunta archivos con el endpoint [`POST /send-email`](/api-reference/send-email). Se especifican en el campo `attachments` del cuerpo.
+
+<Note>
+Esta página describe la **API**. Desde la plataforma también puedes adjuntar archivos al crear
+una campaña: en el panel de creación, sección **Adjuntos**. Ahí los archivos se suben desde tu
+computadora (no hace falta una URL pública) y aplican los mismos tipos y límites de abajo.
+</Note>
 
 ## Estructura del adjunto
 
@@ -22,10 +28,20 @@ Cada adjunto debe incluir `filename` y exactamente uno de `url` o `content`.
 
 Solo se permiten los siguientes tipos MIME:
 
-- `application/pdf`
-- `text/calendar`
+| Tipo MIME | Extensión |
+|---|---|
+| `application/pdf` | `.pdf` |
+| `text/calendar` | `.ics` |
+| `audio/mpeg` | `.mp3` |
 
 Si el tipo MIME no coincide con estos, el envío falla en segundo plano (ver validación más abajo).
+
+<Warning>
+**Los adjuntos pesan en la entrega.** En envíos masivos, un binario adjunto es una señal fuerte
+de spam y la paga la reputación de tu dominio. Para audio o video, un botón hacia una página
+propia suele funcionar mejor: pesa menos, se reproduce en el navegador y te dice quién lo abrió
+(el adjunto no).
+</Warning>
 
 ## Limites
 

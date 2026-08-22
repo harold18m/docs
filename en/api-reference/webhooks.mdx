@@ -60,6 +60,8 @@ Replace the tunnel URL with your server's. The payload's `is_test` flag distingu
 | `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domainverified-domainfailed) |
 | `domain.failed` | Domain verification failed in SES | see [below](#domainverified-domainfailed) |
 | `domain.send_ready` | The domain can already send, even if DKIM hasn't finished propagating | see [below](#domainsendready) |
+| `suppression.added` | An address entered your suppression list (hard bounce or complaint) | `email`, `reason`, `source`, `description` (see [below](#suppressionadded-suppressionremoved)) |
+| `suppression.removed` | An address left your suppression list | `email`, `removed_at` (see [below](#suppressionadded-suppressionremoved)) |
 
 ## Outbound payload
 
@@ -110,7 +112,7 @@ Emitted when you send via API to an address that is on the project's suppression
 Differences vs the other outbound events:
 
 - Only emitted for sends via **API** — campaigns and automations do not trigger it.
-- Its payload is reduced: the top level does not include `is_test` or `environment`, and `data` carries only `email`, `activity_id`, `email_type`, and `suppressed_at` (there is no `message_id` — the email never went out).
+- Its payload is reduced: the top level does not include `is_test` or `environment`, and there is no `message_id` — the email never went out. `data` carries `email`, `activity_id`, `email_type`, `suppressed_at`, and the reason (`suppression_reason`, `suppression_source`, `suppression_description`).
 
 ```json
 {
@@ -121,10 +123,61 @@ Differences vs the other outbound events:
     "email": "recipient@example.com",
     "activity_id": "uuid",
     "email_type": "individual",
-    "suppressed_at": "2026-07-05T22:30:00.000Z"
+    "suppressed_at": "2026-07-05T22:30:00.000Z",
+    "suppression_reason": "bounce",
+    "suppression_source": "ses_event",
+    "suppression_description": "The address does not exist"
   }
 }
 ```
+
+### `suppression.added` / `suppression.removed`
+
+`email.suppressed` tells you when you **try to send** to an already-suppressed address. These two tell you **the moment an address enters or leaves** the list, without waiting for a send.
+
+That difference matters if you keep your own CRM: without them a contact dies silently and you only find out on the next attempt, which can be weeks later.
+
+`suppression.added` fires when RQE automatically suppresses an address after a **hard bounce** or a **spam complaint**.
+
+```json
+{
+  "event": "suppression.added",
+  "timestamp": "2026-08-19T00:30:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "email": "recipient@example.com",
+    "reason": "bounce",
+    "source": "ses_event",
+    "description": "The address does not exist",
+    "bounce_type": "Permanent",
+    "bounce_subtype": "NoEmail",
+    "suppressed_at": "2026-08-19T00:30:00.000Z"
+  }
+}
+```
+
+For a complaint, `reason` is `complaint` and `complaint_feedback_type` arrives instead of the bounce fields.
+
+`suppression.removed` fires when an address is taken off the list from the dashboard or the API — useful because someone else on your team may have reactivated it, not your system.
+
+```json
+{
+  "event": "suppression.removed",
+  "timestamp": "2026-08-19T00:45:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "email": "recipient@example.com",
+    "removed_at": "2026-08-19T00:45:00.000Z",
+    "removed_by": "uuid"
+  }
+}
+```
+
+<Note>
+  `suppression.added` is **not** emitted for bounces with subtype `OnAccountSuppressionList`: that is an echo of the provider's own list, not a new bounce, and it does not create a suppression in your project.
+
+  On a bulk removal one event is emitted per address up to a cap of 200; going over that is recorded in the logs.
+</Note>
 
 ### `domain.send_ready`
 

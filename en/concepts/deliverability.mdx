@@ -89,17 +89,25 @@ send.yourdomain.com. TXT "v=spf1 include:amazonses.com ~all"
   Custom MAIL FROM is not mandatory: `can_send` doesn't require it and emails arrive fine without it. But it improves SPF alignment, especially with strict clients like ProtonMail or enterprise Outlook. Recommended for large volumes.
 </Info>
 
+<Warning>
+  **The most common mistake: assuming SPF alone is enough.**
+
+  SPF is not evaluated against the `From` domain, but against the **Return-Path** domain. Without a Custom MAIL FROM, the Return-Path is `@amazonses.com`: your SPF passes, but it passes *for amazonses.com*, so it doesn't align with your `From` and contributes nothing to DMARC.
+
+  In other words, adding `include:amazonses.com` to your SPF **does nothing on its own** unless you also publish the Return-Path record. What covers DMARC in that scenario is DKIM, not SPF.
+</Warning>
+
 ## The verification process in RQE
 
 <Steps>
 
 <Step title="Register the domain">
 
-`POST /domains/register` with `{ "domain": "yourdomain.com", "sender_name": "My Company", "sender_email": "noreply@yourdomain.com" }` (all three fields are required). RQE generates the 7 DNS records and returns them. See [Domains](/en/api-reference/domains).
+`POST /domains/register` with `{ "domain": "yourdomain.com", "sender_name": "My Company", "sender_email": "noreply@yourdomain.com" }` (all three fields are required). RQE generates the 8 DNS records and returns them. See [Domains](/en/api-reference/domains).
 
 </Step>
 
-<Step title="Configure the 7 records">
+<Step title="Configure the 8 records">
 
 In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
 
@@ -107,7 +115,7 @@ In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
 - 3 CNAME DKIM
 - 1 TXT SPF (merge with existing if applicable)
 - 1 TXT DMARC
-- 1 CNAME Return-Path (Custom MAIL FROM)
+- 1 MX `send` + 1 TXT `send` (Return-Path / Custom MAIL FROM)
 
 </Step>
 
@@ -119,33 +127,125 @@ In your DNS provider (Cloudflare, GoDaddy, Route 53, etc.):
 
 <Step title="Verify">
 
-`POST /domains/:domain/verify` checks the domain verification, the 3 DKIM CNAMEs, and the MAIL FROM CNAME (SPF and DMARC are not validated automatically). With the domain and DKIM verified, the response includes `can_send: true` and you can send from `*@yourdomain.com`.
+`POST /domains/:domain/verify` checks the domain verification, the 3 DKIM CNAMEs, and the MAIL FROM records (SPF and DMARC are not validated there: a sweep of ours resolves them every 6 hours). With the domain and DKIM verified, the response includes `can_send: true` and you can send from `*@yourdomain.com`.
 
 </Step>
 
 </Steps>
 
-## Why emails land in spam (beyond auth)
+## Reputation: what decides the inbox once auth is right
 
-Even if the technical auth is OK, reputational factors weigh in:
+Having all 4 records green **does not guarantee the inbox**. Authentication proves the email is yours; reputation decides whether they want it. This is the most common support case: a fully configured domain that still lands in spam.
+
+<Info>
+  **Reputation belongs to the domain, not the IP.**
+
+  Gmail and Outlook mostly evaluate the domain that signs DKIM (the `d=` in the signature). That reputation follows you even if you change providers or servers. This is why the problem is almost never fixed by "switching IPs".
+</Info>
 
 | Factor | Impact |
 |---|---|
-| New domain (< 30 days) | High — you need to warm it up |
-| Bounce rate > 2% | High — clean your list regularly |
-| Complaint rate > 0.1% | Critical — Gmail/Outlook degrade reputation fast |
+| New or dormant domain (> 60 days without sending) | High — needs warming (see below) |
+| Irregular sending (spikes and silence) | High — consistency matters more than volume |
+| Bounce rate > 4% | High — pause the ramp and clean the list before continuing |
+| Sustained bounce rate > 5% | Critical — your sending provider may put the account under review |
+| Spam complaints > 0.1% | Critical — the worst possible signal; target below 0.08% |
+| Links that don't match your domain | High — see below |
 | No `List-Unsubscribe` header | High — RQE adds it automatically in campaigns and in `/v1/send-template-email`; for direct sends, pass it with `custom_headers` (`POST /send-email` and `/v1/send-batch`) |
-| Suspicious content | Medium — words like "FREE", "URGENT" in caps, bad HTML/text ratio |
-| Purchased lists | Critical — most are spam traps |
+| `no-reply@` sender | Medium — signals one-way communication and lowers trust |
+| Suspicious content | Medium — caps like "FREE"/"URGENT", heavy emails (Gmail clips over 102 KB), no plain-text version |
+| Purchased or cold lists | Critical — most contain spam traps |
+
+### Links must match your domain
+
+If the `From` says `@yourdomain.com` but the links point elsewhere, filters read it as a spoofing signal: it's a classic phishing technique. It happens unintentionally when open/click tracking wraps links with a shared domain.
+
+The fix is a **tracking domain** (`links.yourdomain.com`), so links and the pixel stay aligned with your `From`. See [Tracking](/en/concepts/tracking).
+
+### Warming: how to break in a new domain
+
+A new domain has no history, so receivers distrust it by default. Warming means **raising volume gradually and consistently**, so the provider accumulates positive signals.
+
+Reference ramp for a brand-new domain:
+
+| Day | Daily maximum |
+|---|---|
+| 1 | 150 |
+| 2 | 250 |
+| 3 | 400 |
+| 4 | 700 |
+| 5 | 1,000 |
+| 6 | 1,500 |
+| 7 | 2,000 |
+
+From there, increase roughly 1.4x per day until you reach your target volume. The higher the target, the longer the ramp: for tens of thousands per day, plan for **four to six weeks**.
 
 <Warning>
-  **Warming**
+  **These figures are ceilings, not goals.** Exceeding them burns the domain, but sending 20 emails a day doesn't warm it either: without consistent volume the provider never builds history, and every send looks like a stranger again.
 
-  If your domain is new or hasn't sent in > 60 days, do **gradual warming**: day 1 ~50k emails, day 2 ~75k, day 3+ the rest. [Batch mode](/en/api-reference/campaigns) automates it.
+  During warming, watch two numbers: **bounces below 4%** and **complaints below 0.08%**. If you exceed them, slow down and find the cause before ramping further.
 </Warning>
+
+One detail decides the outcome: **who you send to first**. Start with your most engaged contacts — those who open, reply, and asked to hear from you — and save cold outreach for when the domain already has history. Early opens and replies are the signal that builds reputation.
+
+### Use subdomains to contain risk
+
+Send transactional and marketing email from separate subdomains (for example `send.yourdomain.com` and `news.yourdomain.com`). If a campaign draws complaints, the damage stays contained in that subdomain and your critical email — passwords, receipts — keeps landing.
+
+The same applies when you send on behalf of third parties: a subdomain shared by several senders has **shared reputation**, and one sender with bad lists is enough to drag everyone down.
+
+## How to test that your domain is set up right
+
+<Steps>
+
+<Step title="Send to an external mailbox">
+
+Send a test to a Gmail address that is **not on your own domain**. An email leaving your domain and coming back to your domain through an external provider is the classic signature of spoofing: Google penalizes it even when authentication is perfect. It's the test that produces the most false negatives.
+
+</Step>
+
+<Step title="Open 'Show original'">
+
+In Gmail, message menu → **Show original**. Look for three lines:
+
+```
+SPF:   PASS
+DKIM:  'PASS' with domain yourdomain.com
+DMARC: 'PASS'
+```
+
+What matters is that the DKIM domain is **yours**, not `amazonses.com`. If it says `amazonses.com`, the domain identity is missing: your email is signed, but not in your name.
+
+</Step>
+
+<Step title="Check the 'via'">
+
+If Gmail shows `yourdomain.com via amazonses.com`, you're missing the Custom MAIL FROM. It still arrives, but that's the line that makes readers hesitate.
+
+</Step>
+
+</Steps>
+
+<Warning>
+  Don't test with made-up addresses. Deliberately triggered hard bounces count against your reputation just the same.
+</Warning>
+
+## Do you need a dedicated IP?
+
+Almost certainly not. It's the question that comes up most when something lands in spam, and it's rarely the answer.
+
+By default your email goes out from a pool of shared IPs with established reputation, and you benefit from it on day one. A dedicated IP starts with **no history at all**: it has to be warmed up, and until then it delivers worse.
+
+It makes sense when all three conditions hold at once:
+
+- **High volume**: on the order of hundreds of thousands of emails per month.
+- **Consistent volume** week over week. With sporadic sending the IP "cools down" between batches and every campaign starts from scratch.
+- **Bounces and complaints under control** (bounces below 2%). With a high rate, a new IP burns during its own warm-up.
+
+If you don't meet all three, the shared pool will deliver better. And in no case does a dedicated IP offset damaged domain reputation: that's fixed with clean lists and engagement, not with infrastructure.
 
 ## Next steps
 
 - [Domains](/en/api-reference/domains) — endpoints to register and verify.
-- [Tracking](/en/concepts/tracking) — how open/click tracking works.
+- [Tracking](/en/concepts/tracking) — how open/click tracking and the tracking domain work.
 - [FAQ — why do emails go to spam?](/en/guides/faq) — practical checklist.

@@ -397,7 +397,7 @@ Send bulk emails in a single request — up to **10,000 recipients** per call.
 | `subject`        | string            | Yes*      | Email subject. Required if `templateId` is not used.               |
 | `html`           | string            | Yes*      | HTML content. Required if `templateId` is not used.                 |
 | `templateId`     | string            | Yes*      | Template UUID. Alternative to `subject` + `html`.                   |
-| `email_type`     | string            | No        | Email type. Default: `"marketing"`.                                 |
+| `email_type`     | string            | No        | Nature of the send: `transactional` (default) or `marketing`. See [Send Type](/en/api-reference/send-email#send-type). |
 | `scheduled_at`   | string            | No        | ISO 8601 date for scheduled sending.                                |
 | `custom_headers` | object            | No        | Batch-level headers. Only `List-Unsubscribe` and `List-Unsubscribe-Post` are applied. |
 | `environment`    | string            | No        | Routes webhooks to the configured environment. Format `[a-zA-Z0-9_.-]`, max 64 characters. |
@@ -407,6 +407,13 @@ Send bulk emails in a single request — up to **10,000 recipients** per call.
 <Note>
   *You must send `templateId` OR both `subject` + `html`.
 </Note>
+
+<Warning>
+  **`email_type` now defaults to `transactional`** (it used to be `marketing` on this endpoint
+  only, unlike the rest of the API). If you send campaigns through `send-batch`, **declare
+  `email_type: "marketing"` explicitly**: without the field, the send does not honour voluntary
+  unsubscribes. Bounces and complaints keep blocking in both cases.
+</Warning>
 
 **Structure of each recipient:**
 

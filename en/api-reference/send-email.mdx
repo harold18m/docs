@@ -34,7 +34,7 @@ Learn more in [Authentication](/en/guides/authentication).
 | `senderName`       | string            | No        | Sender display name.                                                        |
 | `templateId`       | string            | No        | ID of a stored template. If provided, it is used instead of `html`.         |
 | `data`             | object            | No        | Object with variables for Handlebars substitution in the template or HTML.  |
-| `email_type`       | string            | No        | Email type (e.g. `transactional`, `marketing`, `automation`).               |
+| `email_type`       | string            | No        | Nature of the send: `transactional` (default) or `marketing`. See [Send Type](#send-type). |
 | `campaign_id`      | string            | No        | UUID of the associated campaign.                                            |
 | `automation_run_id`| string            | No        | UUID of the associated automation run.                                      |
 | `scheduled_at`     | string            | No        | Scheduled send date/time. See [Scheduled Sending](#scheduled-sending).      |
@@ -465,9 +465,36 @@ Sending is **asynchronous**: the endpoint queues the email and responds immediat
 
 The final send result (delivered, bounced, failed) **does not come in this response**: it is queried via the [Activity API](/en/api-reference/activity) using `email_id`, or received via [webhooks](/en/api-reference/webhooks) (`email.send`, `email.delivery`, `email.bounce`, etc.).
 
+## Send Type
+
+The `email_type` field declares the **nature** of the send, and that determines which suppressions apply to it.
+
+| Value | When to use it | Which suppressions block it |
+|---|---|---|
+| `transactional` (default) | 1:1 mail the recipient triggered: verification code, receipt, password reset, appointment confirmation. | Only **deliverability** ones: hard bounce and spam complaint. |
+| `marketing` | 1:N mail you initiate: campaigns, newsletters, promotions. | Deliverability ones **and** voluntary unsubscribes. |
+
+<Warning>
+If you send marketing, **declare `email_type: "marketing"` explicitly**. An unsubscribe is
+consent: only sends declared as marketing honour it. Without the field your send is treated as
+transactional and would reach people who asked not to receive your campaigns.
+</Warning>
+
+<Info>
+Why the default is `transactional`: a bounce is a signal from the mailbox (that address does not
+exist) and must block everything, but a newsletter unsubscribe is a signal from the user about
+your campaigns — it cannot stop them from receiving their verification code or the result they
+asked for.
+</Info>
+
+The values `campaign` and `automation` are treated as marketing. Any other value (`individual`,
+`welcome`, …) is accepted for backwards compatibility and counts as transactional.
+
 ## Suppressed Recipient
 
-If the recipient is on the project's **suppression list** (a previous hard bounce or complaint), the email is **not queued**: the API responds `200` immediately with `suppressed: true`, and nothing goes out to the recipient.
+If the recipient is on the project's **suppression list**, the email is **not queued**: the API responds `200` immediately with `suppressed: true`, and nothing goes out to the recipient.
+
+Which suppressions apply depends on the [send type](#send-type): a transactional send is only blocked by a hard bounce or complaint; a marketing send is also blocked by voluntary unsubscribes.
 
 ```json
 {

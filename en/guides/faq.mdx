@@ -97,25 +97,30 @@ Status is visible in Dashboard → Activity, or queryable via the [Activity API]
 Most common causes:
 
 1. **Unverified domain** — DKIM, SPF, DMARC. Verify with `POST /domains/:domain/verify`.
-2. **Cold domain** — needs gradual warming:
-   - Day 1: ~50,000 emails
-   - Day 2: ~75,000 emails
-   - Day 3+: the rest
-3. **Suspicious content** — too many links, all caps, words like "FREE"/"OFFER"/"URGENT", images without alt text.
-4. **High bounce/complaint rate** — clean your list regularly. >2% bounces or >0.1% complaints degrades reputation.
-5. **No unsubscribe link** — ReallyQuickEmails adds `List-Unsubscribe` automatically, but include a visible link.
+2. **Cold domain** — needs gradual warming: **150 emails on day 1**, 250 on day 2, 400 on day 3, up to around 2,000 by day 7. Ramping all at once burns the domain.
+3. **High bounce or complaint rate** — clean your list. Above 4% bounces you should pause; above 0.1% complaints reputation drops fast.
+4. **Links that don't match your domain** — if the `From` is yours but links point elsewhere, filters read it as phishing. Fixed with a [tracking domain](/en/concepts/tracking).
+5. **Suspicious content** — too many links, all caps, words like "FREE"/"OFFER"/"URGENT", images without alt text.
+6. **No unsubscribe link** — ReallyQuickEmails adds `List-Unsubscribe` automatically, but include a visible link.
+
+<Warning>
+  If everything shows as verified and you still land in spam, the problem is **reputation**, not configuration. See [Deliverability and authentication](/en/concepts/deliverability).
+
+  And don't use an email you send to yourself within your own domain as a test: Google penalizes it for resembling spoofing, even when everything is set up correctly.
+</Warning>
 
 </Accordion>
 
 <Accordion title="How do I verify my domain?">
 
 1. Register the domain with `POST /domains/register`
-2. Configure the 7 DNS records at your provider:
+2. Configure the 8 DNS records at your provider:
    - 1 TXT domain verification
    - 3 CNAME DKIM
    - 1 TXT SPF
    - 1 TXT DMARC
-   - 1 CNAME Return-Path
+   - 1 MX `send` (Return-Path)
+   - 1 TXT `send` (Return-Path)
 3. Wait 5–10 min for propagation
 4. Verify with `POST /domains/:domain/verify`
 5. When `can_send: true`, you're set

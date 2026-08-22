@@ -1,0 +1,80 @@
+---
+title: Dominios y remitentes
+description: "Verifica tu dominio y crea remitentes desde la app: los dos requisitos para que salga el primer email."
+---
+
+Antes de enviar necesitas dos cosas: un **dominio verificado** (le prueba a los proveedores que los emails salen de verdad de ti) y un **remitente** (la dirección concreta que aparece en el "De:"). Sin las dos, no sale ningún envío.
+
+<Info>
+Esta página cubre la app. Si prefieres hacerlo por API, ve a [Dominios](/api-reference/domains).
+</Info>
+
+---
+
+## Verificar un dominio
+
+Ve a **Configuración → Dominios** y agrega el dominio desde el que vas a enviar (por ejemplo `tuempresa.com`). La app te devuelve los registros DNS que tienes que publicar en tu proveedor.
+
+<Steps>
+<Step title="Copia los registros">
+Puedes copiarlos uno por uno, copiarlos todos en formato tabulado, o exportarlos como CSV para pasárselos a quien administre el DNS.
+</Step>
+<Step title="Publícalos en tu proveedor DNS">
+Cloudflare, Route 53, GoDaddy, el panel de tu hosting: donde vivan los registros de tu dominio.
+</Step>
+<Step title="Espera la propagación">
+El DNS tarda. Unos minutos en la mayoría de los proveedores, hasta unas horas en el peor caso. La app revisa el estado sola; no tienes que hacer nada más.
+</Step>
+</Steps>
+
+### Qué registros son y para qué sirven
+
+| Registro | Tipo | Para qué |
+|---|---|---|
+| DKIM | CNAME | Firma criptográficamente cada email. Es el que prueba que el mensaje salió de tu dominio y no fue alterado. |
+| SPF | TXT | Declara qué servidores pueden enviar en tu nombre. |
+| DMARC | TXT | Le dice al receptor qué hacer con el correo que no pase SPF ni DKIM, y a dónde mandar los reportes. |
+
+Dos detalles que hacen fallar la verificación más seguido que ningún otro:
+
+<Warning>
+**SPF: si ya tienes un registro SPF, no crees otro.** Un dominio solo admite uno. Agrega `include:amazonses.com` al que ya existe.
+
+**DMARC: lo mismo.** Solo puede existir un registro DMARC por dominio. Si ya tienes uno, no crees un segundo.
+</Warning>
+
+<Note>
+El **nombre** de cada registro es relativo a tu dominio. Si tu proveedor pide el nombre completo (FQDN), agrégale tu dominio al final. Pegar el FQDN donde se espera el nombre relativo produce nombres duplicados del tipo `_amazonses.tudominio.com.tudominio.com`, y la verificación nunca pasa.
+</Note>
+
+### Estados
+
+DKIM lo verifica el proveedor de envío automáticamente en cuanto ve los registros publicados. SPF y DMARC no se "verifican" del mismo modo — los reportes los emite quien recibe el correo — así que RQE consulta tu DNS y comprueba que el contenido sea el correcto.
+
+Mientras falte algo vas a ver **verificación parcial**; cuando esté todo, **listo para enviar**.
+
+---
+
+## Crear un remitente
+
+Un remitente es la dirección que verá tu destinatario en el "De:" — `hola@tuempresa.com`, `ventas@tuempresa.com`. Se crean en **Configuración → Remitentes**.
+
+Cada remitente se verifica por email: RQE manda un correo a esa dirección y tú confirmas desde ahí.
+
+<Warning>
+Un remitente sin verificar **no se puede activar**. Es el motivo más común de "creé todo y no puedo enviar": el dominio quedó verde, pero la dirección concreta nunca se confirmó.
+</Warning>
+
+Puedes tener varios remitentes por proyecto y elegir cuál usa cada campaña o cada automatización.
+
+---
+
+## Qué revisar si algo no verifica
+
+1. **¿Los registros están publicados en el dominio correcto?** Un typo en el nombre del registro es invisible a simple vista. Compara con lo que muestra la app, carácter por carácter.
+2. **¿Duplicaste SPF o DMARC?** Ver la advertencia de arriba. Es la causa número uno.
+3. **¿Pegaste el FQDN donde iba el nombre relativo?** Ver la nota de arriba.
+4. **¿Pasó suficiente tiempo?** Si publicaste hace dos minutos, espera.
+5. **¿El remitente está verificado, además del dominio?** Son dos pasos distintos.
+
+Con el dominio verde y el remitente confirmado, ya puedes enviar: sigue con [Campañas](/app/campanas).

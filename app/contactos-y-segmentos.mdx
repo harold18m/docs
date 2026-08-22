@@ -1,0 +1,57 @@
+---
+title: Contactos y segmentos
+description: "Importa tu base, agrúpala en segmentos y entiende qué es una supresión."
+---
+
+Un **contacto** es una persona en tu proyecto: su correo y los datos que sepas de ella. Un **segmento** es un grupo de contactos, y es lo que eliges como audiencia al enviar.
+
+---
+
+## Importar contactos
+
+El importador toma un CSV o Excel y te deja **mapear las columnas** de tu archivo a los campos del contacto. Ese paso importa más de lo que parece.
+
+<Warning>
+Mapea la columna del nombre. Si importas solo correos, `{{first_name}}` sale vacío en todos tus emails: el saludo queda "Hola ,". No falla ni avisa — simplemente se envía así. Ver [Variables del editor](/app/variables).
+</Warning>
+
+El importador deduplica por correo, así que puedes subir una lista que se solape con la que ya tienes sin crear contactos repetidos. Puedes mandar los contactos importados directo a un segmento.
+
+Para agregar unos pocos contactos no hace falta un archivo: puedes crearlos a mano, o pegarle la lista al copiloto y pedirle que arme el segmento.
+
+---
+
+## Segmentos
+
+Hay dos tipos y la diferencia es quién decide la membresía.
+
+| | Estático | Dinámico |
+|---|---|---|
+| Quién decide quién está adentro | Tú | Una regla que evalúa RQE |
+| Cuándo cambia | Cuando lo editas | Solo, cuando el contacto cumple o deja de cumplir la regla |
+| Para qué sirve | Una lista concreta: los 40 inscritos a un evento, los compradores de un producto | "Los que abrieron la última campaña", "los que no compran hace 90 días" |
+
+Un segmento **estático** es una lista: la armas una vez y se queda como está. Un segmento **dinámico** es una pregunta: cada vez que se evalúa, responde con quien cumpla la condición hoy.
+
+Las reglas dinámicas se arman sobre señales que RQE ya tiene: interacción con campañas (abrió, hizo clic, no abrió), paso por una automatización, eventos personalizados que mande tu sistema, y datos de Shopify si tienes la tienda conectada.
+
+<Tip>
+Si dudas, empieza dinámico. Un segmento estático envejece en silencio: la gente entra pero nadie la saca, y un día sale un envío a una audiencia que ya no corresponde.
+</Tip>
+
+---
+
+## Supresiones
+
+Un contacto **suprimido** no recibe emails, aunque esté dentro de un segmento. Es una protección de tu reputación de envío, no un castigo al contacto.
+
+| Motivo | Qué pasó |
+|---|---|
+| Baja | La persona hizo clic en el link de cancelar suscripción |
+| Rebote | Su servidor rechazó el correo de forma permanente (la casilla no existe) |
+| Reclamo | Marcó tu email como spam |
+| Manual | Lo suprimiste tú |
+
+Las tres primeras son automáticas. **Seguir enviando a direcciones que rebotan o que te marcaron como spam es la vía más rápida a la carpeta de correo no deseado**, así que la supresión te conviene: ver [Deliverability](/concepts/deliverability).
+
+Los contactos suprimidos siguen en tu base, visibles y con su motivo. Un contacto que se dio de baja solo puede volver si él mismo se resuscribe.

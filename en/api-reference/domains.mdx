@@ -26,7 +26,7 @@ If you're automating domain onboarding from your own application, here's the ful
 
 <Steps>
   <Step title="Register the domain">
-    `POST /domains/register` returns all 7 DNS records in `dns_records`, ready to display.
+    `POST /domains/register` returns all 8 DNS records in `dns_records`, ready to display.
   </Step>
   <Step title="Offer one-click setup">
     `GET /domains/{domain}/domain-connect`. If it returns `supported: true`, redirect the user to `apply_url` and their provider creates the records automatically. Otherwise, show the records for manual setup.
@@ -48,7 +48,7 @@ If you're automating domain onboarding from your own application, here's the ful
 </Info>
 
 <Note>
-  **SPF and DMARC are not validated automatically.** They always show `status: "not_set"` in `dns_records`, even when correctly published, and `can_send` ignores them. If you need to confirm your user set them up, resolve them yourself with a DNS query.
+  **SPF and DMARC are checked every 6 hours, not on demand.** A server-side sweep resolves them over DNS and writes their `status` into `dns_records`, so they can come back `verified` or `mismatch` without you calling anything — you no longer need to resolve them yourself. Two caveats: `can_send` ignores them (they drive deliverability and DMARC alignment, not sending permission), and `POST /domains/{domain}/verify` resets both to `not_set` until the next sweep.
 </Note>
 
 ---
@@ -211,8 +211,12 @@ Configure the DNS records with your provider and call `POST /domains/{domain}/ve
 | ------ | -------------------------------------------------------- |
 | `400`  | Missing required fields, malformed domain, or `sender_email` does not end in `@{domain}`. |
 | `401`  | Invalid API Key.                                         |
-| `409`  | The domain is already registered in this project.        |
+| `409`  | The domain is attached to another verified sender.       |
 | `500`  | Internal error while registering the domain.             |
+
+<Note>
+  **Registration is idempotent.** If the domain already has an incomplete record, the operation reconciles it instead of failing: it responds `201` with `reused: true` and the existing DKIM records. Retrying a half-finished registration is safe and won't create duplicates.
+</Note>
 
 ---
 
@@ -297,7 +301,7 @@ curl -X GET https://api.reallyquickemails.com/domains/mystore.com/dns-records \
 Per-record `status`: `not_set`, `propagating`, `mismatch`, or `verified`. `last_checked_at` is `null` until the first verification with `POST /domains/{domain}/verify`.
 
 <Note>
-  SPF and DMARC always appear with `status: "not_set"`: their propagation is not validated automatically.
+  AWS does not report SPF or DMARC: a sweep of ours resolves them over DNS every 6 hours. After a `POST /verify` they go back to `not_set` until that sweep.
 </Note>
 
 ### Error Codes
@@ -582,9 +586,116 @@ curl -X GET "https://api.reallyquickemails.com/domains?domain=mystore.com" \
 
 ---
 
+## GET /domains/health
+
+Sending health for all your domains in a single call: which one can send, how its authentication looks, how much it sent, how it bounces, and **what to do about each**.
+
+Built for integrators running several customers. It joins server-side what you'd otherwise piece together by hand across `GET /domains`, the DNS records and `/v1/domain-stats`.
+
+<Info>
+  The `issues` field comes back as plain, actionable text — you can forward it straight to your end customer without rewriting it.
+</Info>
+
+### Query Parameters
+
+| Parameter | Type    | Default | Description                              |
+| --------- | ------- | ------- | ---------------------------------------- |
+| `days`    | integer | `30`    | Metrics window, between `1` and `90`.    |
+
+### Example
+
+```bash
+curl "https://api.reallyquickemails.com/domains/health" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+```json
+{
+  "success": true,
+  "period_days": 30,
+  "summary": { "total": 3, "healthy": 1, "warning": 1, "critical": 1 },
+  "data": [
+    {
+      "domain": "customer-ok.com",
+      "status": "healthy",
+      "can_send": true,
+      "sent": 56248,
+      "hard_bounce_rate": 0.31,
+      "auth": { "ses": "verified", "spf": "verified", "dmarc": "verified", "dkim": "verified" },
+      "issues": []
+    },
+    {
+      "domain": "customer-pending.com",
+      "status": "warning",
+      "can_send": true,
+      "sent": 2509,
+      "hard_bounce_rate": 0.44,
+      "auth": { "ses": "verified", "spf": "verified", "dmarc": "not_set", "dkim": "verified" },
+      "issues": [
+        "DMARC sin configurar: sin él no hay reportes ni política ante suplantación."
+      ]
+    },
+    {
+      "domain": "gmail.com",
+      "status": "critical",
+      "can_send": true,
+      "sent": 14049,
+      "hard_bounce_rate": 1.12,
+      "auth": { "ses": null, "spf": null, "dmarc": null, "dkim": null },
+      "issues": [
+        "Se envía desde este dominio pero no está registrado como identidad. Sin verificarlo no hay autenticación posible."
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+  `issues` strings are returned in Spanish today. Match on `status` and `auth.*` rather than on the message text.
+</Note>
+
+### Response fields
+
+| Field              | Description                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| `status`           | `healthy` · `warning` · `critical`. See the table below.                                           |
+| `can_send`         | Whether the domain has a verified SES identity. **`true` doesn't mean it lands well** — see below.  |
+| `sent`             | Sends within the requested window (`period_days`).                                                 |
+| `hard_bounce_rate` | Percentage of **permanent** bounces. Transient ones don't count.                                   |
+| `auth.ses`         | `verified` · `pending` · `failed`, or `null` when there's no domain identity.                       |
+| `auth.spf`         | Status of the SPF TXT record as resolved via DNS.                                                   |
+| `auth.dmarc`       | Status of the `_dmarc` record. `not_set` when it doesn't exist.                                     |
+| `auth.dkim`        | Status of the 3 DKIM CNAMEs. A single missing one keeps it from being `verified`.                   |
+| `issues`           | What this domain is missing, as actionable text. Empty when healthy.                                |
+
+Domains come back **sorted by volume**: the ones where fixing pays off most come first.
+
+### How `status` is computed
+
+| Status     | When                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------- |
+| `critical` | The domain can't send, **or** it sends without a verified domain identity, **or** its hard bounce is above 5%. |
+| `warning`  | It can send but something's missing: own DKIM, DMARC, or hard bounce crossed 3%.               |
+| `healthy`  | Verified, authenticated, low bounce. `issues` is empty.                                        |
+
+<Warning>
+  **`can_send: true` alongside `status: critical` is the costliest case.** It means email goes out with a `200` and nobody sees an error, but it ships without DKIM on the customer's domain: it gets signed with the platform's shared domain, so their reputation blends with everyone else's and they can't use their own reply domain or tracking domain.
+
+  This shows up when a domain was verified **by email only** (the one-click link) instead of by DNS, or when sending from a domain you don't own such as `gmail.com` — which can't be authenticated at all, since you don't control its DNS.
+</Warning>
+
+### Error Codes
+
+| Code   | Description                          |
+| ------ | ------------------------------------ |
+| `401`  | Invalid API Key.                     |
+| `500`  | Domain health could not be computed. |
+
+---
+
 ## GET /domains/:domain/domain-connect
 
-One-click DNS setup. If the domain's DNS provider supports the [Domain Connect](https://www.domainconnect.org/) standard, this returns a signed URL that creates all 7 records automatically: the end user just confirms on their provider's screen, with nothing to copy by hand.
+One-click DNS setup. If the domain's DNS provider supports the [Domain Connect](https://www.domainconnect.org/) standard, this returns a signed URL that creates all 8 records automatically: the end user just confirms on their provider's screen, with nothing to copy by hand.
 
 Use it right after `POST /domains/register`. If the provider doesn't support it, fall back to showing the `dns_records` for manual setup.
 
@@ -877,7 +988,11 @@ flowchart LR
 ```
 
 <Info>
-  **Model for integrators (one reply domain per project).** The reply domain belongs to the project of the API key you call with. To offer clean replies to **your own clients**, each client is an RQE project with its own key: register `reply.clientdomain.com` using that project's key. Example: for your client Phrasso, with Phrasso's project key you call `POST /domains/reply { "domain": "phrasso.com" }` and their replies arrive at `name@reply.phrasso.com`. A project cannot have more than one reply domain.
+  **Model for integrators (several reply domains per project).** The reply domain belongs to the project of the API key you call with, and **a project can have several**: each send resolves the one matching the sender's domain.
+
+  To offer clean replies to **your own clients** from a single project, register each one's domain with your key: `POST /domains/reply { "domain": "phrasso.com" }` and that client's replies arrive at `name@reply.phrasso.com`. To verify a specific one, pass `domain` in the body of `POST /domains/reply/verify`.
+
+  You can also give each client their own project and key — see [Partner quickstart](/en/guides/partner-quickstart) for when each model fits.
 </Info>
 
 ### POST /domains/reply

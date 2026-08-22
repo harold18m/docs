@@ -48,7 +48,7 @@ Si automatizas el alta de dominios desde tu propia aplicación, este es el recor
 </Info>
 
 <Note>
-  **SPF y DMARC no se validan automáticamente.** Siempre aparecen con `status: "not_set"` en `dns_records`, incluso si están correctamente publicados. `can_send` no los considera. Si necesitas comprobar que tu usuario los configuró, resuélvelos por tu cuenta con una consulta DNS.
+  **SPF y DMARC se verifican cada 6 horas, no en el momento.** Un barrido server-side los resuelve por DNS y escribe su `status` en `dns_records`, así que pueden llegarte `verified` o `mismatch` sin que llames a nada — no necesitas resolverlos por tu cuenta. Dos salvedades: `can_send` no los considera (de ellos dependen la entregabilidad y la alineación DMARC, no el permiso de envío), y `POST /domains/{domain}/verify` reescribe ambos a `not_set` hasta el siguiente barrido.
 </Note>
 
 ---
@@ -211,8 +211,12 @@ Configura los registros DNS en tu proveedor y llama a `POST /domains/{domain}/ve
 | ------ | -------------------------------------------------------- |
 | `400`  | Campos requeridos faltantes, dominio con formato inválido, o `sender_email` no termina en `@{domain}`. |
 | `401`  | API Key inválida.                                        |
-| `409`  | El dominio ya está registrado en este proyecto.          |
+| `409`  | El dominio está asociado a otro remitente verificado.    |
 | `500`  | Error interno al registrar el dominio.                   |
+
+<Note>
+  **El alta es idempotente.** Si el dominio ya tiene un registro incompleto, la operación lo reconcilia en vez de fallar: responde `201` con `reused: true` y sus registros DKIM existentes. Reintentar un alta que quedó a medias es seguro y no crea duplicados.
+</Note>
 
 ---
 
@@ -297,7 +301,7 @@ curl -X GET https://api.reallyquickemails.com/domains/mitienda.com/dns-records \
 `status` por registro: `not_set`, `propagating`, `mismatch` o `verified`. `last_checked_at` es `null` hasta la primera verificación con `POST /domains/{domain}/verify`.
 
 <Note>
-  SPF y DMARC siempre aparecen con `status: "not_set"`: su propagación no se valida automáticamente.
+  SPF y DMARC no los reporta AWS: los resuelve un barrido propio por DNS cada 6 horas. Tras un `POST /verify` vuelven a `not_set` hasta ese barrido.
 </Note>
 
 ### Codigos de Error
@@ -582,9 +586,112 @@ curl -X GET "https://api.reallyquickemails.com/domains?domain=mitienda.com" \
 
 ---
 
+## GET /domains/health
+
+Salud de envío de todos tus dominios en una sola llamada: cuál puede enviar, cómo está su autenticación, cuánto envió, cómo rebota y **qué hacer con cada uno**.
+
+Pensado para integradores que operan a varios clientes. Cruza en el servidor lo que de otro modo tendrías que juntar a mano entre `GET /domains`, los registros DNS y `/v1/domain-stats`.
+
+<Info>
+  El campo `issues` viene en texto plano y accionable — puedes reenviarlo directo a tu cliente final sin traducirlo.
+</Info>
+
+### Query Parameters
+
+| Parámetro | Tipo    | Default | Descripción                                     |
+| --------- | ------- | ------- | ----------------------------------------------- |
+| `days`    | integer | `30`    | Ventana de métricas, entre `1` y `90`.          |
+
+### Ejemplo
+
+```bash
+curl "https://api.reallyquickemails.com/domains/health" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+```json
+{
+  "success": true,
+  "period_days": 30,
+  "summary": { "total": 3, "healthy": 1, "warning": 1, "critical": 1 },
+  "data": [
+    {
+      "domain": "cliente-ok.com",
+      "status": "healthy",
+      "can_send": true,
+      "sent": 56248,
+      "hard_bounce_rate": 0.31,
+      "auth": { "ses": "verified", "spf": "verified", "dmarc": "verified", "dkim": "verified" },
+      "issues": []
+    },
+    {
+      "domain": "cliente-pendiente.com",
+      "status": "warning",
+      "can_send": true,
+      "sent": 2509,
+      "hard_bounce_rate": 0.44,
+      "auth": { "ses": "verified", "spf": "verified", "dmarc": "not_set", "dkim": "verified" },
+      "issues": [
+        "DMARC sin configurar: sin él no hay reportes ni política ante suplantación."
+      ]
+    },
+    {
+      "domain": "gmail.com",
+      "status": "critical",
+      "can_send": true,
+      "sent": 14049,
+      "hard_bounce_rate": 1.12,
+      "auth": { "ses": null, "spf": null, "dmarc": null, "dkim": null },
+      "issues": [
+        "Se envía desde este dominio pero no está registrado como identidad. Sin verificarlo no hay autenticación posible."
+      ]
+    }
+  ]
+}
+```
+
+### Campos de respuesta
+
+| Campo              | Descripción                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| `status`           | `healthy` · `warning` · `critical`. Ver la tabla de abajo.                                            |
+| `can_send`         | Si el dominio tiene identidad verificada en SES. **`true` no significa que llegue bien** — ver nota.   |
+| `sent`             | Envíos en la ventana pedida (`period_days`).                                                          |
+| `hard_bounce_rate` | Porcentaje de rebotes **permanentes**. Los temporales no cuentan.                                     |
+| `auth.ses`         | `verified` · `pending` · `failed`, o `null` si no hay identidad de dominio.                            |
+| `auth.spf`         | Estado del registro TXT de SPF resuelto por DNS.                                                       |
+| `auth.dmarc`       | Estado del registro `_dmarc`. `not_set` si no existe.                                                  |
+| `auth.dkim`        | Estado de los 3 CNAME de DKIM. Basta con que uno falte para que no sea `verified`.                     |
+| `issues`           | Qué le falta a este dominio, en texto accionable. Vacío si está sano.                                  |
+
+Los dominios vienen **ordenados por volumen**: primero donde el arreglo rinde más.
+
+### Cómo se calcula `status`
+
+| Estado     | Cuándo                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `critical` | El dominio no puede enviar, **o** envía sin identidad de dominio verificada, **o** su hard bounce supera el 5%. |
+| `warning`  | Puede enviar pero le falta algo: DKIM propio, DMARC, o el hard bounce pasó del 3%.        |
+| `healthy`  | Verificado, autenticado y con rebote bajo. `issues` vacío.                                |
+
+<Warning>
+  **`can_send: true` con `status: critical` es el caso que más cuesta.** Significa que los emails salen con `200` y nadie ve un error, pero van sin DKIM del dominio del cliente: se firman con el dominio compartido de la plataforma, así que su reputación se mezcla con la de todos y no puede usar reply domain ni tracking domain propios.
+
+  Aparece cuando el dominio se verificó **solo por email** (el enlace de un clic) en vez de por DNS, o cuando se envía desde un dominio ajeno como `gmail.com` — que no se puede autenticar de ninguna forma porque no controlas su DNS.
+</Warning>
+
+### Codigos de Error
+
+| Código | Descripción                                        |
+| ------ | -------------------------------------------------- |
+| `401`  | API Key inválida.                                  |
+| `500`  | No se pudo calcular la salud de los dominios.      |
+
+---
+
 ## GET /domains/:domain/domain-connect
 
-Configuración de DNS en un clic. Si el proveedor DNS del dominio soporta el estándar [Domain Connect](https://www.domainconnect.org/), retorna una URL firmada que crea los 7 registros automáticamente: el usuario final solo confirma en la pantalla de su proveedor, sin copiar nada a mano.
+Configuración de DNS en un clic. Si el proveedor DNS del dominio soporta el estándar [Domain Connect](https://www.domainconnect.org/), retorna una URL firmada que crea los 8 registros automáticamente: el usuario final solo confirma en la pantalla de su proveedor, sin copiar nada a mano.
 
 Úsalo justo después de `POST /domains/register`. Si el proveedor no lo soporta, cae de vuelta a mostrar los registros de `dns_records` para configuración manual.
 
@@ -877,7 +984,11 @@ flowchart LR
 ```
 
 <Info>
-  **Modelo para integradores (una reply-domain por proyecto).** El reply domain pertenece al proyecto de la API key con la que llamas. Para ofrecer reply limpio a **tus propios clientes**, cada cliente es un proyecto RQE con su propia key: registra `reply.dominiodelcliente.com` usando la key de ese proyecto. Ejemplo: para tu cliente Phrasso, con la key del proyecto de Phrasso llamas `POST /domains/reply { "domain": "phrasso.com" }` y sus respuestas llegan a `nombre@reply.phrasso.com`. Un proyecto no puede tener más de un reply domain.
+  **Modelo para integradores (varios reply domains por proyecto).** El reply domain pertenece al proyecto de la API key con la que llamas, y **un proyecto puede tener varios**: cada envío resuelve el que corresponde al dominio del remitente.
+
+  Para ofrecer reply limpio a **tus propios clientes** desde un mismo proyecto, registra el dominio de cada uno con tu key: `POST /domains/reply { "domain": "phrasso.com" }` y las respuestas de ese cliente llegan a `nombre@reply.phrasso.com`. Para verificar uno concreto, pasa `domain` en el body de `POST /domains/reply/verify`.
+
+  También puedes darle un proyecto propio a cada cliente, con su key — ver [Partner quickstart](/guides/partner-quickstart) para cuándo conviene cada modelo.
 </Info>
 
 ### POST /domains/reply

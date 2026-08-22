@@ -28,8 +28,19 @@
               "guides/authentication",
               "guides/templates",
               "guides/scheduling",
+              "guides/segments",
               "guides/attachments",
               "guides/faq"
+            ]
+          },
+          {
+            "group": "La app",
+            "pages": [
+              "app/dominios-y-remitentes",
+              "app/campanas",
+              "app/contactos-y-segmentos",
+              "app/variables",
+              "app/automatizaciones"
             ]
           },
           {
@@ -51,6 +62,7 @@
               "api-reference/campaigns",
               "api-reference/webhooks",
               "api-reference/leads",
+              "api-reference/templates",
               "api-reference/events",
               "api-reference/activity"
             ]
@@ -72,8 +84,19 @@
               "en/guides/authentication",
               "en/guides/templates",
               "en/guides/scheduling",
+              "en/guides/segments",
               "en/guides/attachments",
               "en/guides/faq"
+            ]
+          },
+          {
+            "group": "The app",
+            "pages": [
+              "en/app/domains-and-senders",
+              "en/app/campaigns",
+              "en/app/contacts-and-segments",
+              "en/app/variables",
+              "en/app/automations"
             ]
           },
           {
@@ -95,6 +118,7 @@
               "en/api-reference/campaigns",
               "en/api-reference/webhooks",
               "en/api-reference/leads",
+              "en/api-reference/templates",
               "en/api-reference/events",
               "en/api-reference/activity"
             ]

@@ -1,0 +1,84 @@
+---
+title: Variables del editor
+description: "Personaliza un email para miles de personas con un solo diseño: qué variables existen en la app y cómo se resuelven al enviar."
+---
+
+Una variable es un hueco que se rellena con el dato de cada destinatario en el momento del envío. Escribes **un** email que dice `Hola {{first_name}}`, y cada persona recibe el suyo con su nombre.
+
+<Warning>
+No hagas una plantilla por persona. Si lo único que cambia entre destinatarios es el nombre, es **un solo email** con `{{first_name}}`. Duplicar la plantilla multiplica el trabajo de mantenerla y no agrega nada.
+</Warning>
+
+<Info>
+Esta página cubre las variables **de la app** (campañas y automatizaciones creadas en el dashboard), que salen de la ficha de cada contacto. Si envías por API y mandas tus propias variables en el payload, ve a [Templates y Variables](/guides/templates) — ahí defines tú los nombres.
+</Info>
+
+---
+
+## Variables del destinatario
+
+Salen de la ficha del contacto. Son las que usas en el saludo y en el asunto.
+
+| Variable | Qué trae |
+|---|---|
+| `{{first_name}}` | Nombre de pila |
+| `{{last_name}}` | Apellido |
+| `{{full_name}}` | Nombre completo. Si falta, se arma con nombre + apellido |
+| `{{email}}` | Correo del destinatario |
+
+<Warning>
+El nombre de la variable es `first_name`, **no** `nombre`. `{{nombre}}` no existe en la app: al enviar queda vacío. Lo mismo con cualquier nombre inventado (`{{empresa}}`, `{{descuento}}`, `{{fecha}}`).
+</Warning>
+
+## Variables del sistema
+
+Las inyecta RQE al enviar. Van como destino de un link, no como texto.
+
+| Variable | Qué trae |
+|---|---|
+| `{{unsubscribe_url}}` | Link de baja, único por destinatario |
+| `{{view_in_browser_url}}` | Link para ver el email en el navegador |
+
+## Variables de Shopify
+
+Disponibles cuando el email nace de un evento de tienda (carrito abandonado, orden creada). Las principales:
+
+| Variable | Qué trae |
+|---|---|
+| `{{abandoned_checkout_url}}` | Link para retomar el carrito |
+| `{{cart_total_formatted}}` | Total del carrito con su moneda |
+| `{{cart_count}}` | Cantidad de artículos |
+| `{{first_product_title}}` | Título del primer producto del carrito |
+| `{{first_product_image}}` | Imagen del primer producto |
+| `{{first_product_price}}` | Precio del primer producto |
+
+El selector de variables del editor lista el set completo, con un valor de ejemplo de cada una.
+
+---
+
+## El dato tiene que existir
+
+Una variable resuelve lo que hay en la ficha del contacto. Si importaste una lista con solo correos, `{{first_name}}` **sale vacío** — no falla, no avisa: manda "Hola ," y sigue.
+
+Por eso, al importar contactos, mapea la columna del nombre. Si el contacto entra desde Shopify o desde un evento de tu sistema, el nombre viene incluido cuando el payload lo trae.
+
+<Tip>
+Antes de un envío grande, usa la vista previa: te muestra el email con datos de ejemplo y hace evidente cualquier hueco.
+</Tip>
+
+### Cuando el dato puede faltar
+
+La doble llave no admite valor por defecto: `{{first_name || "crack"}}` no funciona, queda escrito tal cual.
+
+Tienes dos caminos:
+
+1. **Escribe una frase que aguante el vacío.** "Hola, te extrañamos" funciona con y sin nombre. "Hola {{first_name}}, te extrañamos" se rompe a medias.
+2. **Usa la llave simple con valor por defecto** en plantillas HTML importadas: `{first_name || "Hola"}`. El motor de envío la resuelve y, si el dato falta, escribe el texto de respaldo.
+
+---
+
+## Dónde se pueden usar
+
+En el **asunto** y en el **cuerpo** del email — en cualquier texto.
+
+No las uses como origen de una imagen (el `src` de una foto): ahí va una URL real. Y el nombre y el logo de tu marca van escritos tal cual, no como variable: `{{brand_name}}` y `{{brand_logo}}` no existen.

@@ -363,13 +363,19 @@ CSV variables take priority over the default values.
 
 ## Domain warming
 
-For large sends (>50,000 emails) from a new domain or one with little history, send gradually:
+From a new domain or one with little history, raise volume gradually. Reference ramp:
 
-| Day | Suggested volume |
+| Day | Suggested maximum |
 |---|---|
-| Day 1 | ~50,000 |
-| Day 2 | ~75,000 |
-| Day 3+ | Remainder |
+| 1 | 150 |
+| 2 | 250 |
+| 3 | 400 |
+| 4 | 700 |
+| 5 | 1,000 |
+| 6 | 1,500 |
+| 7 | 2,000 |
+
+From there, roughly 1.4x per day until you reach your target volume. For tens of thousands per day, plan for four to six weeks of ramp.
 
 Use **batch mode** to automate this. Sending everything at once from a cold domain can flag you as spam on Gmail, Outlook, and other providers.
 

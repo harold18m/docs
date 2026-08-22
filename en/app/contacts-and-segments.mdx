@@ -1,0 +1,57 @@
+---
+title: Contacts and segments
+description: "Import your list, group it into segments, and understand what a suppression is."
+---
+
+A **contact** is a person in your project: their address plus whatever you know about them. A **segment** is a group of contacts, and it's what you pick as the audience when you send.
+
+---
+
+## Importing contacts
+
+The importer takes a CSV or Excel file and lets you **map your columns** to contact fields. That step matters more than it looks.
+
+<Warning>
+Map the name column. If you import bare addresses, `{{first_name}}` comes out empty in every email you send: the greeting reads "Hi ,". It doesn't fail and it doesn't warn — it just sends. See [Editor variables](/en/app/variables).
+</Warning>
+
+The importer deduplicates by address, so you can upload a list that overlaps with what you already have without creating duplicates. Imported contacts can go straight into a segment.
+
+For a handful of contacts you don't need a file: create them by hand, or paste the list to the copilot and ask it to build the segment.
+
+---
+
+## Segments
+
+There are two kinds, and the difference is who decides membership.
+
+| | Static | Dynamic |
+|---|---|---|
+| Who decides who's in | You | A rule RQE evaluates |
+| When it changes | When you edit it | On its own, as contacts start or stop matching |
+| Good for | A concrete list: the 40 people signed up for an event, buyers of one product | "Opened the last campaign", "hasn't purchased in 90 days" |
+
+A **static** segment is a list: you build it once and it stays put. A **dynamic** segment is a question: every time it's evaluated, it answers with whoever matches today.
+
+Dynamic rules are built on signals RQE already has: campaign engagement (opened, clicked, didn't open), passage through an automation, custom events from your system, and Shopify data when your store is connected.
+
+<Tip>
+When in doubt, go dynamic. A static segment ages quietly: people get added, nobody removes them, and one day a send goes to an audience that no longer fits.
+</Tip>
+
+---
+
+## Suppressions
+
+A **suppressed** contact receives no email, even when they sit inside a segment. It protects your sending reputation; it isn't a punishment for the contact.
+
+| Reason | What happened |
+|---|---|
+| Unsubscribe | They clicked the unsubscribe link |
+| Bounce | Their server rejected the message permanently (the mailbox doesn't exist) |
+| Complaint | They marked your email as spam |
+| Manual | You suppressed them |
+
+The first three are automatic. **Continuing to send to addresses that bounce or that flagged you as spam is the fastest route to the spam folder**, so suppression works in your favor: see [Deliverability](/en/concepts/deliverability).
+
+Suppressed contacts stay in your list, visible, with their reason attached. Someone who unsubscribed can only come back by resubscribing themselves.

@@ -1,0 +1,129 @@
+---
+title: Segmentos
+description: "Sincroniza tu base de contactos con RQE y segméntala con reglas dinámicas."
+---
+
+Un segmento es una lista de contactos dentro de un proyecto: es lo que eliges como audiencia al enviar una campaña. Hay dos tipos, y la diferencia importa mucho cuando quien alimenta el segmento es un sistema externo (tu CRM, tu backend, tu plataforma).
+
+| | Estático | Dinámico |
+|---|---|---|
+| Quién decide la membresía | Tu sistema, vía API | Una regla que evalúa RQE |
+| Alta | La pides tú | Automática |
+| Baja | La pides tú | Automática |
+| Ideal para | Listas fijas, importaciones puntuales | "Clientes activos", "compradores recientes", "no abrió la última campaña" |
+
+La trampa del estático es conocida: el alta siempre se implementa, la baja casi nunca. Si tu sistema deja de mandar el `DELETE` cuando alguien se da de baja, el segmento se va llenando de gente que ya no corresponde — y nadie lo nota hasta que sale un envío mal dirigido. Con un segmento dinámico ese problema no existe.
+
+---
+
+## Sincronizar tu base con eventos
+
+Es la vía recomendada cuando la fuente de verdad vive en tu plataforma. La idea: tú informas **hechos** (eventos), RQE deduce la **audiencia** (el segmento).
+
+### 1. Manda el evento desde tu sistema
+
+Cada vez que ocurra el hecho que define la audiencia — un cobro exitoso, una renovación, un login — informa el evento:
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/events \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@acme.com",
+    "event": "pago_recibido",
+    "properties": { "plan": "pro", "monto": 49.0 }
+  }'
+```
+
+No necesitas crear el contacto antes: si el email no existe, se crea solo. Para cargas masivas usa [`POST /v1/events/bulk`](/api-reference/events) (hasta 1,000 por llamada).
+
+### 2. Crea el segmento dinámico
+
+En la app: **Audiencia → Segmentos**, abre el segmento y elige **Convertir a segmento dinámico**. Luego:
+
+- **Tipo de regla**: `Comportamiento (evento)`
+- **Acción**: `Disparó el evento`
+- **Evento**: `pago_recibido`
+- **En los últimos**: `35` días
+
+Eso es, literalmente, "clientes que están pagando ahora".
+
+### 3. Envía
+
+Elige ese segmento como audiencia de tu campaña. No hay paso de sincronización manual ni botón de refrescar.
+
+<Note>
+La ventana móvil es la que hace el trabajo sucio. Quien deja de pagar deja de generar el evento, sale de la ventana y cae del segmento solo. Elige la ventana un poco más ancha que tu ciclo de facturación (35 días para un cobro mensual) para que un cobro que se atrasa unos días no expulse al cliente por accidente.
+</Note>
+
+---
+
+## Reglas disponibles
+
+Cada segmento dinámico se define con **una** regla:
+
+| Regla | Incluye a los contactos que… |
+|---|---|
+| Comportamiento (evento) | Dispararon —o **no** dispararon— un evento tuyo en los últimos N días |
+| Engagement con una campaña | Abrieron, hicieron clic, no abrieron o no hicieron clic en una campaña concreta |
+| Engagement por correo | Abrieron **y** hicieron clic en algún correo del proyecto en la ventana |
+| Participación en automatización | Pasaron por una automatización, filtrable por estado del flujo |
+| Compra en la tienda (Shopify) | Compraron N o más veces en la ventana, o dejaron de comprar |
+| Checkout sin comprar (Shopify) | Iniciaron un checkout y no lo completaron |
+
+La regla `Comportamiento (evento)` admite el operador negativo (`No disparó el evento`), útil para reactivación: "no disparó `pago_recibido` en los últimos 60 días".
+
+<Warning>
+Un segmento admite **una sola regla**. Para combinar criterios ("clientes activos que además hicieron clic"), crea el segmento con la regla más restrictiva. Si necesitas el cruce exacto, resuélvelo de tu lado: calcula la audiencia en tu sistema y sincronízala como segmento estático.
+</Warning>
+
+---
+
+## Cuándo se actualiza la membresía
+
+| Momento | Qué pasa |
+|---|---|
+| Al usar el segmento | La membresía se resuelve **en vivo**. Si mandas el evento y envías la campaña un minuto después, el contacto ya entra |
+| Cada hora | RQE recalcula y persiste la membresía. Esto es lo que dispara las automatizaciones con trigger "cambio de segmento" |
+
+Es decir: para **enviar**, no esperas nada. La cadencia horaria solo importa si además cuelgas una automatización del ingreso al segmento.
+
+---
+
+## Segmentos estáticos vía API
+
+Si prefieres controlar la membresía tú mismo, los endpoints están en [Leads](/api-reference/leads#segmentos):
+
+| Método | Ruta | Para qué |
+|---|---|---|
+| POST | `/v1/leads` | Crear/actualizar contactos con `segment_ids` |
+| POST | `/v1/leads/:id/segments` | Agregar un contacto a uno o más segmentos |
+| DELETE | `/v1/leads/:id/segments/:segmentId` | Sacarlo de un segmento |
+
+El `:id` es el UUID del contacto, no su email.
+
+**Dónde encontrar el ID de un segmento:** ábrelo en la app y cópialo de la URL, o usa [`GET /v1/leads/:id`](/api-reference/leads), que devuelve los `segment_ids` del contacto.
+
+---
+
+## Con un cliente MCP
+
+Si conectas RQE a Claude o Cursor mediante el [servidor MCP](/guides/mcp), puedes hacer todo lo anterior conversando, sin escribir código:
+
+- `track_event` — registra el evento (también auto-crea el contacto)
+- `create_segment` — crea el segmento; acepta la regla para dejarlo dinámico de una
+- `list_segments` — lista los que ya existen, con sus IDs
+- `upsert_contacts` — hasta 1,000 contactos por llamada, con sus `segment_ids`
+
+---
+
+## Preguntas frecuentes
+
+**¿Puedo segmentar por tags o por atributos del contacto?**
+Todavía no como regla de segmento. Los tags ([`POST /v1/leads/:email/tags`](/api-reference/leads#tags)) y los atributos sí se evalúan dentro de las **automatizaciones**, y sirven para ramificar un flujo. Para armar audiencias, usa eventos.
+
+**¿Los contactos creados por un evento reciben correos?**
+Sí, son contactos normales del proyecto. Ten en cuenta que crear un contacto puede inscribirlo en automatizaciones activas con disparadores de contacto nuevo.
+
+**¿Qué pasa si mando el mismo evento muchas veces?**
+Nada malo: los eventos se acumulan como historial. La regla mira la ocurrencia más reciente dentro de la ventana, así que reenviar el evento en cada cobro es exactamente el uso previsto.

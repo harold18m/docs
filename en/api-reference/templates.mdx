@@ -1,0 +1,168 @@
+---
+title: Templates
+description: "Create, list, update, and delete email templates via API."
+---
+
+Manage your project's templates without opening the app. Useful when your emails live in your own system and you want to version them there, or when you send via API and never open the editor.
+
+A template created via API works exactly like one created in the app: send it with [`POST /v1/send-template-email`](/en/api-reference/public-api#post-v1send-template-email) and open it in the visual editor whenever you want.
+
+## Authentication
+
+All requests require a Bearer token:
+
+```
+Authorization: Bearer sk_proj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+See [Public API v1](/en/api-reference/public-api#authentication) for details.
+
+---
+
+## Endpoints
+
+### POST /v1/templates
+
+Creates a template from HTML.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| name | string | Yes | Name shown in the app |
+| html | string | Yes | The email HTML, exactly as you want it sent |
+| subject | string | No | Default subject (can be overridden at send time) |
+| description | string | No | Internal note |
+| preheader | string | No | Inbox preview text |
+
+The HTML is stored as you send it: we don't rewrite it or inject styles. It can include variables (`{{first_name}}`) — they're substituted at send time, not at creation.
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/templates \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Order confirmation",
+    "subject": "Your order {{order_id}} is confirmed",
+    "html": "<html><body><h1>Thanks {{first_name}}</h1></body></html>"
+  }'
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "8f3a1c2e-...",
+    "internal_id": 42,
+    "name": "Order confirmation",
+    "subject": "Your order {{order_id}} is confirmed",
+    "description": null,
+    "preheader": null,
+    "html": "<html><body><h1>Thanks {{first_name}}</h1></body></html>",
+    "created_at": "2026-08-06T18:20:11.482Z",
+    "updated_at": "2026-08-06T18:20:11.482Z"
+  }
+}
+```
+
+<Note>
+Keep the `id` or the `internal_id`: those are the two identifiers `send-template-email` accepts. The `internal_id` is a short per-project number, handy if you'll write it by hand in your config.
+</Note>
+
+---
+
+### GET /v1/templates
+
+Lists the project's templates, most recently updated first.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| page | number | 1 | Page |
+| per_page | number | 50 | Max 200 |
+| search | string | — | Filter by name (partial match) |
+
+```bash
+curl "https://api.reallyquickemails.com/v1/templates?search=order" \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+The list **does not include the HTML** (a page of 50 templates would be megabytes of response). The `html` field comes back empty; fetch the individual template to get the body.
+
+---
+
+### GET /v1/templates/:id
+
+Returns a template with its HTML. The `:id` can be the UUID or the numeric `internal_id`.
+
+```bash
+curl https://api.reallyquickemails.com/v1/templates/42 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+---
+
+### PUT /v1/templates/:id
+
+Updates a template. Send only the fields that change: `name`, `html`, `subject`, `description`, or `preheader`.
+
+```bash
+curl -X PUT https://api.reallyquickemails.com/v1/templates/42 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "html": "<html><body><h1>New version</h1></body></html>" }'
+```
+
+Changes apply to subsequent sends. Already-sent emails are not modified.
+
+---
+
+### DELETE /v1/templates/:id
+
+Deletes a template.
+
+```bash
+curl -X DELETE https://api.reallyquickemails.com/v1/templates/42 \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx"
+```
+
+If the template is in use by a campaign or an automation step, the response is **409** and nothing is deleted:
+
+```json
+{
+  "error": "Template is in use by 2 automation node(s). Deleting it would leave them without content. Retry with ?force=true to delete anyway.",
+  "code": "TEMPLATE_IN_USE",
+  "automation_nodes": 2,
+  "campaigns": 0
+}
+```
+
+<Warning>
+`?force=true` deletes it anyway. The automations and campaigns that used it are left **without content** and their sends will go out empty: point them at another template before forcing.
+</Warning>
+
+---
+
+## Error codes
+
+| Code | Meaning |
+|---|---|
+| `400` | Missing `name` or `html`, or `:id` is neither a UUID nor a number |
+| `401` | Missing or invalid API key |
+| `404` | Template does not exist in this project |
+| `409` | Template is in use (see `DELETE`) |
+
+---
+
+## Sending the template
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/send-template-email \
+  -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "template_internal_id": 42,
+    "recipient_email": "customer@example.com",
+    "sender_email": "hello@yourdomain.com",
+    "variables": { "first_name": "Ana", "order_id": "A-1043" }
+  }'
+```
+
+Variables, loops, and helpers are covered in [Templates and variables](/en/guides/templates).
