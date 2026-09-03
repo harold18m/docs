@@ -39,15 +39,21 @@ El alta entera cabe en **una llamada con tu partner-key**: el proyecto, su domin
       "api_key": "sk_proj_…",
       "domain": {
         "domain": "cliente.com",
+        "identity_id": "…",
         "verification_status": "pending",
+        "can_send": false,
         "verification_url": "https://app.reallyquickemails.com/verificar-dominio/…",
+        "reply_domain": { "domain": "reply.cliente.com", "status": "pending" },
+        "tracking_domain": { "domain": "links.cliente.com", "status": "pending" },
         "records": [ "…11 registros: verificación, 3 DKIM, SPF, DMARC, return path, tracking y reply…" ]
       },
-      "sender": { "from_email": "hola@cliente.com", "domain_authenticated": false }
+      "sender": { "id": "…", "from_email": "hola@cliente.com", "sender_source": "manual", "domain_authenticated": false }
     }
     ```
 
     Guarda la `api_key` de forma segura: se devuelve una sola vez. El `external_key` hace la llamada **idempotente** — reintentarla devuelve el mismo proyecto en vez de duplicarlo.
+
+    **`domain` y `sender` van juntos.** SES no registra un dominio sin una dirección `From`, así que mandar uno sin el otro responde `400` antes de crear nada. Cada registro DNS trae `fqdn`, que es el nombre listo para publicar; ese es el que copia el cliente.
 
     Referencia completa en [Partner / Provisioning](/api-reference/partner).
   </Step>
@@ -91,12 +97,13 @@ Todo lo que hace el alta completa se puede hacer después, por separado y siempr
 
 | Quiero…                        | Endpoint                                              |
 | ------------------------------ | ----------------------------------------------------- |
-| Registrar su dominio           | `POST /v1/partner/projects/{id}/domains`              |
+| Registrar su dominio           | `POST /v1/partner/projects/{id}/domains` (con `sender`) |
 | Ver el estado registro a registro | `GET /v1/partner/projects/{id}/domains/{domain}`   |
 | Crear un remitente             | `POST /v1/partner/projects/{id}/senders`              |
 | Cambiar nombre o webhook       | `PATCH /v1/partner/projects/{id}`                     |
 | Rotar su API key               | `POST /v1/partner/projects/{id}/api-key/rotate`       |
 | Reactivar uno deshabilitado    | `POST /v1/partner/projects/{id}/reactivate`           |
+| Ver tu cupo de clientes        | `GET /v1/partner/whoami` → `partner.max_projects`     |
 
 ### Si tu cliente no controla su DNS
 

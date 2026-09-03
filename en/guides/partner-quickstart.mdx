@@ -39,15 +39,21 @@ The whole onboarding fits in **one call with your partner key**: the project, it
       "api_key": "sk_proj_…",
       "domain": {
         "domain": "customer.com",
+        "identity_id": "…",
         "verification_status": "pending",
+        "can_send": false,
         "verification_url": "https://app.reallyquickemails.com/verificar-dominio/…",
+        "reply_domain": { "domain": "reply.customer.com", "status": "pending" },
+        "tracking_domain": { "domain": "links.customer.com", "status": "pending" },
         "records": [ "…11 records: verification, 3 DKIM, SPF, DMARC, return path, tracking and reply…" ]
       },
-      "sender": { "from_email": "hello@customer.com", "domain_authenticated": false }
+      "sender": { "id": "…", "from_email": "hello@customer.com", "sender_source": "manual", "domain_authenticated": false }
     }
     ```
 
     Store the `api_key` securely: it's returned only once. The `external_key` makes the call **idempotent** — retrying it returns the same project instead of duplicating it.
+
+    **`domain` and `sender` go together.** SES won't register a domain without a `From` address, so sending one without the other returns `400` before anything is created. Every DNS record carries an `fqdn`, the ready-to-publish name; that's the one the customer copies.
 
     Full reference in [Partner / Provisioning](/en/api-reference/partner).
   </Step>
@@ -91,12 +97,13 @@ Everything the full onboarding does can be done later, piece by piece, always wi
 
 | I want to…                     | Endpoint                                              |
 | ------------------------------ | ----------------------------------------------------- |
-| Register their domain          | `POST /v1/partner/projects/{id}/domains`              |
+| Register their domain          | `POST /v1/partner/projects/{id}/domains` (with `sender`) |
 | See record-by-record status    | `GET /v1/partner/projects/{id}/domains/{domain}`      |
 | Create a sender                | `POST /v1/partner/projects/{id}/senders`              |
 | Change name or webhook         | `PATCH /v1/partner/projects/{id}`                     |
 | Rotate their API key           | `POST /v1/partner/projects/{id}/api-key/rotate`       |
 | Reactivate a disabled one      | `POST /v1/partner/projects/{id}/reactivate`           |
+| Check your client quota        | `GET /v1/partner/whoami` → `partner.max_projects`     |
 
 ### If your customer doesn't control their DNS
 
