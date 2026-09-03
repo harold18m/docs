@@ -105,6 +105,10 @@ Todo lo que hace el alta completa se puede hacer después, por separado y siempr
 | Reactivar uno deshabilitado    | `POST /v1/partner/projects/{id}/reactivate`           |
 | Ver tu cupo de clientes        | `GET /v1/partner/whoami` → `partner.max_projects`     |
 
+El alta de dominio **no pisa lo que ya funciona**. Si el dominio ya estaba registrado, la llamada es idempotente y no toca nada más del cliente. Y aunque el dominio sea nuevo, no registra el reply si el cliente ya tiene uno verificado, ni el tracking si ya tiene uno configurado: registrar un reply domain reescribe su estado a `pending`, y eso le apagaría las respuestas branded a un cliente que ya las tenía andando.
+
+Lo que se omitió viene dicho en el array `skipped[]` de la respuesta, con su `step` y su `reason_code`. Ver [Pasos omitidos](/api-reference/partner#pasos-omitidos).
+
 ### Si tu cliente no controla su DNS
 
 Existe la salida de verificar solo la casilla, por correo (magic link). Hay que pedirla explícitamente:

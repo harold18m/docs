@@ -226,7 +226,7 @@ Esa forma del objeto `sender` —con `id`, `sender_source`, `can_send` y `create
   **El nombre `records` es solo de los endpoints bajo `/v1/partner`.** Los de [`/domains/*`](/api-reference/domains), que se llaman con la API key del cliente, siguen devolviendo el array como `dns_records`. No cambió nada ahí.
 </Note>
 
-**Reply y tracking son best effort.** Si alguno falla, el dominio queda registrado igual y el motivo viaja en `warnings[]` — el alta no se cae por eso.
+**El pack completo se arma cuando el dominio es nuevo.** Reply y tracking son best effort: si alguno falla, el dominio queda registrado igual y el motivo viaja en `warnings[]`. Y si el proyecto ya tenía uno de los dos, ese paso **se omite** y se reporta en `skipped[]` — ver [Pasos omitidos](#pasos-omitidos).
 
 ### Idempotencia
 
@@ -319,7 +319,7 @@ curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99
     "timezone": "America/Lima",
     "country": "PE",
     "webhook_url": "https://tuapp.com/hooks/rqe",
-    "inbound_webhook_url": "https://tuapp.com/hooks/rqe",
+    "inbound_webhook_url": "https://tuapp.com/hooks/respuestas",
     "tracking_domain": "links.phrasso.com",
     "tracking_domain_status": "verified",
     "reply_domain": "reply.phrasso.com",
@@ -408,14 +408,19 @@ Actualiza los datos del proyecto-cliente. Solo se tocan los campos que envías.
 
 ### Request Body
 
-| Campo         | Tipo   | Descripción                                            |
-| ------------- | ------ | -------------------------------------------------------- |
-| `name`        | string | Nuevo nombre del cliente. El `slug` **no** cambia.       |
-| `webhook_url` | string | URL HTTPS de webhooks. Escribe también `inbound_webhook_url` con el mismo valor, igual que el alta. |
-| `timezone`    | string | Zona horaria IANA.                                       |
-| `country`     | string | Código de país.                                          |
+| Campo                 | Tipo   | Descripción                                            |
+| --------------------- | ------ | -------------------------------------------------------- |
+| `name`                | string | Nuevo nombre del cliente. El `slug` **no** cambia.       |
+| `webhook_url`         | string | URL HTTPS de webhooks **salientes** (eventos de email, `domain.verified`). |
+| `inbound_webhook_url` | string | URL HTTPS de webhooks **entrantes** (respuestas de los destinatarios).     |
+| `timezone`            | string | Zona horaria IANA.                                       |
+| `country`             | string | Código de país.                                          |
 
 Un `PATCH` sin ningún campo reconocido responde `400 EMPTY_PATCH`.
+
+<Warning>
+  **`webhook_url` e `inbound_webhook_url` son dos campos independientes.** Escribir uno **no** toca al otro. El alta los deja iguales solo porque nacen vacíos y hereda el mismo valor para los dos; a partir de ahí viven separados. Si tu integración tiene el saliente en `null` y el entrante apuntando a tu endpoint de respuestas, mandar `webhook_url` en un `PATCH` **no** te va a desviar el ruteo de respuestas.
+</Warning>
 
 <Tabs><Tab title="cURL">
 
@@ -440,7 +445,7 @@ curl -X PATCH https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4
     "timezone": "America/Lima",
     "country": "CL",
     "webhook_url": "https://tuapp.com/hooks/rqe/v2",
-    "inbound_webhook_url": "https://tuapp.com/hooks/rqe/v2",
+    "inbound_webhook_url": "https://tuapp.com/hooks/respuestas",
     "tracking_domain": "links.phrasso.com",
     "tracking_domain_status": "verified",
     "reply_domain": "reply.phrasso.com",
@@ -570,13 +575,41 @@ curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b
     "external_key": null,
     "created_at": "2026-07-22T16:00:00.000Z"
   },
-  "warnings": []
+  "warnings": [],
+  "skipped": []
 }
 ```
 
 <Note>
   **El alta de dominio es idempotente.** Repetirla sobre un dominio ya registrado responde `200` con `reused: true` y sus registros existentes, en vez de fallar. Reintentar un alta que quedó a medias es seguro.
 </Note>
+
+#### Pasos omitidos
+
+`skipped[]` es hermano de `warnings[]` y dice **qué no se hizo y por qué**. La diferencia importa: `warnings[]` es un paso que se intentó y falló; `skipped[]` es un paso que no se intentó, a propósito, porque hacerlo habría roto algo que ya funcionaba.
+
+| `step`            | `reason_code`                   | Qué pasó                                                                 |
+| ----------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| `pack`            | `DOMAIN_ALREADY_REGISTERED`     | El dominio ya estaba registrado. No se toca nada más del cliente.          |
+| `reply_domain`    | `REPLY_DOMAIN_ALREADY_VERIFIED` | El cliente ya tenía un reply domain verificado.                            |
+| `tracking_domain` | `TRACKING_DOMAIN_ALREADY_SET`   | El cliente ya tenía un tracking domain configurado.                        |
+
+```json
+{
+  "domain": "phrasso.com",
+  "reused": true,
+  "warnings": [],
+  "skipped": [
+    { "step": "pack", "reason_code": "DOMAIN_ALREADY_REGISTERED", "reason": "phrasso.com ya estaba registrado en este proyecto." }
+  ]
+}
+```
+
+<Warning>
+  **Por qué no se pisa un reply domain que ya funciona.** Registrar uno reescribe su estado a `pending`, y sobre un cliente que ya tenía las respuestas branded andando eso se las apaga hasta que alguien re-verifique. Preferimos omitir el paso y decírtelo antes que romperle el reply a un cliente en producción.
+</Warning>
+
+`skipped[]` solo se llena en este `POST`. `GET /v1/partner/projects/{projectId}/domains/{domain}` devuelve siempre `skipped: []`.
 
 <Tip>
   **El `verification_url` es lo que le mandas al cliente final.** Es una página pública que muestra sus registros con botón de copiar y un botón de verificar. No expone nada del proyecto: solo el dominio y sus registros, que son públicos por definición. No hace falta que tu cliente tenga cuenta RQE.
@@ -637,15 +670,18 @@ curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99
   "records": [
     { "record_type": "CNAME", "name": "abc123._domainkey", "fqdn": "abc123._domainkey.phrasso.com", "value": "abc123.dkim.amazonses.com", "purpose": "dkim", "status": "verified", "ttl_hint": 1800 },
     { "record_type": "TXT", "name": "_dmarc", "fqdn": "_dmarc.phrasso.com", "value": "v=DMARC1; p=none; rua=mailto:d-8a1f6e2c@dmarc.reallyquickemails.com", "purpose": "dmarc", "status": "not_set", "ttl_hint": 300 }
-  ]
+  ],
+  "skipped": []
 }
 ```
 
-Un dominio que no existe en el proyecto responde `404 DOMAIN_NOT_FOUND`.
+`skipped` viene siempre vacío acá: solo el `POST` de alta lo llena. Un dominio que no existe en el proyecto responde `404 DOMAIN_NOT_FOUND`.
 
 ### POST /v1/partner/projects/&#123;projectId&#125;/domains/&#123;domain&#125;/verify
 
-Fuerza la verificación: consulta el DNS real, actualiza el estado de los registros y responde si el dominio ya puede enviar. Llámalo cuando el cliente te diga "ya lo configuré".
+Fuerza la verificación **del dominio de envío**: consulta SES, actualiza el estado de los registros y responde si el dominio ya puede enviar. Llámalo cuando el cliente te diga "ya lo configuré".
+
+Cubre identidad, DKIM y MAIL FROM. **No verifica el reply domain ni el tracking domain.**
 
 ```bash
 curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/domains/phrasso.com/verify \
@@ -665,6 +701,12 @@ curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b
   ]
 }
 ```
+
+La respuesta también trae `reply_domain` y `tracking_domain`, pero **de solo lectura**: son el estado actual de cada uno, no algo que esta llamada haya verificado.
+
+<Warning>
+  **El verify a propósito no toca el tracking.** Verificarlo escribe `pending` en cuanto un lookup de DNS no resuelve, y el envío exige `verified` para usar el dominio del cliente. Un DNS lento habría devuelto los links de todos sus correos al dominio compartido sin que nadie lo pidiera. Lo mismo vale para el reply. Para forzar esos dos hay endpoints propios, que se llaman con la API key del tenant: ver [reply domain](/api-reference/domains#post-domainsreplyverify) y [tracking domain](/api-reference/domains#post-apiprojectsprojectidtracking-domainverify).
+</Warning>
 
 <Info>
   **No hace falta pollear.** Los dominios en `pending` se re-verifican solos —seguido el primer día, más espaciado después— y cuando quedan verificados RQE emite el webhook `domain.verified` al `webhook_url` del proyecto. `verify` sirve para respuesta inmediata, no para reemplazar el webhook.
@@ -913,7 +955,6 @@ Todas las respuestas de error tienen la misma forma:
 | `400`  | `INVALID_WEBHOOK_URL`        | `webhook_url` no es una URL válida o no usa HTTPS.                                |
 | `400`  | `INVALID_TIMEZONE`           | `timezone` no es una zona horaria IANA válida.                                    |
 | `400`  | `INVALID_COUNTRY`            | `country` no es un código de país válido.                                         |
-| `400`  | `INVALID_PROJECT_ID`         | El `projectId` de la ruta no es un UUID.                                          |
 | `400`  | `EMPTY_PATCH`                | El `PATCH` no trae ningún campo reconocido.                                       |
 | `400`  | `MISSING_DOMAIN`             | Falta `domain` al registrar un dominio.                                           |
 | `400`  | `INVALID_DOMAIN`             | El dominio tiene formato inválido.                                                |
@@ -924,7 +965,7 @@ Todas las respuestas de error tienen la misma forma:
 | `400`  | `DOMAIN_REQUIRED_FOR_SENDER` | Mandaste `sender` sin `domain`. Van juntos.                                       |
 | `400`  | `SENDER_DOMAIN_MISMATCH`     | El correo del remitente no termina en el dominio que registras.                   |
 | `401`  | —                            | Partner-key ausente o inválida.                                                   |
-| `404`  | `NOT_FOUND`                  | El proyecto no existe en tu organización. Un tenant ajeno responde igual.         |
+| `404`  | `NOT_FOUND`                  | El proyecto no existe en tu organización. Un `projectId` malformado y uno de otro partner responden igual. |
 | `404`  | `DOMAIN_NOT_FOUND`           | El dominio no existe en ese proyecto.                                             |
 | `409`  | `MAX_PROJECTS_REACHED`       | Alcanzaste tu cupo. Trae `max_projects` y `active_projects` en el cuerpo.         |
 | `409`  | `PROJECT_DISABLED`           | El `external_key` del alta corresponde a un cliente deshabilitado. Trae `project_id`. |

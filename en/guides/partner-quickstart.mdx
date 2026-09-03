@@ -105,6 +105,10 @@ Everything the full onboarding does can be done later, piece by piece, always wi
 | Reactivate a disabled one      | `POST /v1/partner/projects/{id}/reactivate`           |
 | Check your client quota        | `GET /v1/partner/whoami` → `partner.max_projects`     |
 
+Domain registration **never overwrites what already works**. If the domain was already registered, the call is idempotent and touches nothing else about the customer. And even for a new domain, it won't register reply if the customer already has a verified one, nor tracking if one is already configured: registering a reply domain rewrites its status to `pending`, which would switch off branded replies for a customer already running them.
+
+Whatever was skipped comes back in the response's `skipped[]` array, with its `step` and `reason_code`. See [Skipped steps](/en/api-reference/partner#skipped-steps).
+
 ### If your customer doesn't control their DNS
 
 There is a way out: verify just the mailbox, by email (magic link). You have to ask for it explicitly:
