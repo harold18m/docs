@@ -1,66 +1,76 @@
 ---
 title: Partner quickstart
-description: "Integra RQE como plataforma para tus propios clientes: dos modelos, cuál elegir y cómo operar cada uno por API."
+description: "Integra RQE como plataforma para tus propios clientes: da de alta un cliente completo en una llamada y opera su dominio, remitente y API key con tu partner-key."
 ---
 
 Esta guía es para **partners**: integradores que ofrecen email a **sus propios clientes** usando RQE por debajo (patrón reseller).
 
-**El modelo es: un cliente, un proyecto.** Creas un proyecto por cada cliente con tu partner-key y recibes su API key para operarlo. Cada cliente queda aislado de verdad — sus datos, sus dominios, sus límites y sus estadísticas.
+**El modelo es: un cliente, un proyecto.** Creas un proyecto por cada cliente con tu partner-key, lo configuras entero con esa misma key (dominio, remitente, webhook) y recibes su API key para operarlo. Cada cliente queda aislado de verdad — sus datos, sus dominios, sus límites y sus estadísticas.
 
 ## Empieza acá
 
+El alta entera cabe en **una llamada con tu partner-key**: el proyecto, su dominio de envío con el pack DNS completo y su remitente. No necesitas la API key del cliente para configurarlo.
+
 <Steps>
-  <Step title="Crea el proyecto del cliente">
-    Con tu **partner-key** (`sk_partner_...`, la emite RQE al habilitar tu cuenta de partner), creas un proyecto por cliente y recibes su `api_key`.
+  <Step title="Crea el cliente completo">
+    Con tu **partner-key** (`sk_partner_...`, la emite RQE al habilitar tu cuenta de partner):
 
     ```bash
     curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
       -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
       -H "Content-Type: application/json" \
-      -d '{ "name": "Cliente", "external_key": "tu-id-interno" }'
+      -d '{
+        "name": "Cliente",
+        "external_key": "tu-id-interno",
+        "domain": "cliente.com",
+        "sender": { "name": "Cliente", "email": "hola@cliente.com" },
+        "webhook_url": "https://tuapp.com/hooks/rqe"
+      }'
     ```
 
     ```json
-    { "project_id": "…", "slug": "cliente", "api_key": "sk_proj_…" }
+    {
+      "project_id": "…",
+      "slug": "cliente",
+      "api_key": "sk_proj_…",
+      "domain": {
+        "domain": "cliente.com",
+        "verification_status": "pending",
+        "verification_url": "https://app.reallyquickemails.com/verificar-dominio/…",
+        "records": [ "…11 registros: verificación, 3 DKIM, SPF, DMARC, return path, tracking y reply…" ]
+      },
+      "sender": { "from_email": "hola@cliente.com", "domain_authenticated": false }
+    }
     ```
 
-    Guarda la `api_key` de forma segura. El `external_key` hace la llamada **idempotente**: reintentarla devuelve el mismo proyecto en vez de duplicarlo.
+    Guarda la `api_key` de forma segura: se devuelve una sola vez. El `external_key` hace la llamada **idempotente** — reintentarla devuelve el mismo proyecto en vez de duplicarlo.
+
+    Referencia completa en [Partner / Provisioning](/api-reference/partner).
   </Step>
 
-  <Step title="Registra su dominio">
-    Con la `api_key` del cliente, das de alta su dominio y recibes los registros DNS que debe publicar.
+  <Step title="Reenvía el link de verificación">
+    `domain.verification_url` es una **página pública** con los registros DNS del cliente, botones de copiar y un botón de verificar. La abre tu cliente final sin cuenta RQE: es lo único que tienes que mandarle.
 
-    ```bash
-    curl -X POST https://api.reallyquickemails.com/domains/register \
-      -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
-      -H "Content-Type: application/json" \
-      -d '{ "domain": "cliente.com" }'
-    ```
-
-    Para que los publique de un click, usa [Domain Connect](/api-reference/domains): `GET /domains/cliente.com/domain-connect` devuelve una URL firmada que crea los registros en su proveedor.
+    Si su proveedor de DNS soporta [Domain Connect](/api-reference/domains), la publicación es de un clic desde esa misma página.
 
     <Note>
-      Este es el paso donde se traba la mayoría de las integraciones: el cliente final tiene que tocar su DNS. El link de un click es lo que más ayuda.
+      Este es el paso donde se traba la mayoría de las integraciones: el cliente final tiene que tocar su DNS. El link público es lo que más ayuda — no le pidas que copie registros de un correo tuyo.
     </Note>
-  </Step>
-
-  <Step title="Registra su reply domain (opcional)">
-    Para que las respuestas lleguen a `nombre@reply.cliente.com` en vez de a una dirección con token:
-
-    ```bash
-    curl -X POST https://api.reallyquickemails.com/domains/reply \
-      -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
-      -H "Content-Type: application/json" \
-      -d '{ "domain": "cliente.com" }'
-    ```
   </Step>
 
   <Step title="Espera la verificación">
     Cuando el cliente publique el DNS, recibes el webhook **`domain.verified`** — no hace falta pollear. Ver [Webhooks](/api-reference/webhooks).
+
+    Para forzar el chequeo cuando te diga "ya lo configuré":
+
+    ```bash
+    curl -X POST https://api.reallyquickemails.com/v1/partner/projects/{project_id}/domains/cliente.com/verify \
+      -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+    ```
   </Step>
 
   <Step title="Envía y mide">
-    Con la misma `api_key`, [envía](/api-reference/public-api) transaccional o en lote. Para ver cómo va cada cliente:
+    Con la `api_key` del cliente, [envía](/api-reference/public-api) transaccional o en lote. Para ver cómo va cada uno:
 
     ```bash
     curl https://api.reallyquickemails.com/v1/partner/projects/{project_id}/stats \
@@ -70,6 +80,38 @@ Esta guía es para **partners**: integradores que ofrecen email a **sus propios 
     Y `GET /v1/partner/projects` lista toda tu cartera.
   </Step>
 </Steps>
+
+### Configura un cliente que ya existe
+
+Todo lo que hace el alta completa se puede hacer después, por separado y siempre con la partner-key:
+
+| Quiero…                        | Endpoint                                              |
+| ------------------------------ | ----------------------------------------------------- |
+| Registrar su dominio           | `POST /v1/partner/projects/{id}/domains`              |
+| Ver el estado registro a registro | `GET /v1/partner/projects/{id}/domains/{domain}`   |
+| Crear un remitente             | `POST /v1/partner/projects/{id}/senders`              |
+| Cambiar nombre o webhook       | `PATCH /v1/partner/projects/{id}`                     |
+| Rotar su API key               | `POST /v1/partner/projects/{id}/api-key/rotate`       |
+| Reactivar uno deshabilitado    | `POST /v1/partner/projects/{id}/reactivate`           |
+
+### Si tu cliente no controla su DNS
+
+Existe la salida de verificar solo la casilla, por correo (magic link). Hay que pedirla explícitamente:
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/{project_id}/senders \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Cliente", "email": "hola@gmail.com", "allow_unauthenticated": true }'
+```
+
+Sin el flag, la API responde `422 DOMAIN_NOT_VERIFIED`. Es a propósito.
+
+<Warning>
+  **El magic link no sirve para volumen.** Verifica la casilla, no el dominio: el correo sale firmado con el dominio compartido de la plataforma, así que Microsoft rechaza con `5.7.515` por DMARC fail y Gmail responde `550-5.7.1 "likely unsolicited mail"`. Tampoco habilita reply domain ni tracking domain.
+
+  Nada de esto aparece como error en tu integración: la API responde `200` y el problema se ve semanas después en la tasa de rebote.
+</Warning>
 
 ## Revisa la salud de tus clientes
 
@@ -103,6 +145,8 @@ curl "https://api.reallyquickemails.com/domains/health" \
 </Warning>
 
 Ver [Dominios](/api-reference/domains) para la respuesta completa.
+
+Con la partner-key tienes lo mismo por cliente, sin su API key: `GET /v1/partner/projects/{id}` devuelve un bloque `health` con `status`, `can_send`, `hard_bounce_rate` e `issues`. Es la llamada con la que armas tu panel de clientes.
 
 <Warning>
   **Mira el hard bounce, no el total de rebotes.** Los proveedores calculan el umbral de suspensión (~5%) sobre los rebotes **permanentes**; los temporales no cuentan. Un dominio puede mostrar 12% de rebote total y estar por debajo del 1% de hard bounce.
@@ -218,4 +262,4 @@ Ver [MCP · modo partner](/guides/mcp#modo-partner-gestiona-tu-cartera-de-client
 - [Activity](/api-reference/activity) — `?sender_domain=` y `/v1/domain-stats`.
 - [API pública](/api-reference/public-api) — envío.
 - [Webhooks](/api-reference/webhooks) — `domain.verified` y eventos de email.
-- [Partner / Provisioning](/api-reference/partner) — `/v1/partner/projects` (camino B).
+- [Partner / Provisioning](/api-reference/partner) — referencia completa de `/v1/partner/*`: alta, dominios, remitentes, API key y códigos de error.
