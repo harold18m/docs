@@ -11,6 +11,10 @@ Esta guía es para **partners**: integradores que ofrecen email a **sus propios 
 
 El alta entera cabe en **una llamada con tu partner-key**: el proyecto, su dominio de envío con el pack DNS completo y su remitente. No necesitas la API key del cliente para configurarlo.
 
+<Info>
+  **Compatibilidad: si ya integraste el flujo anterior, no necesitas cambiar nada.** `POST /v1/partner/projects` con solo `{ "name": "..." }` sigue siendo válido y devuelve la misma respuesta de siempre; `domain` y `sender` son campos nuevos y opcionales. Los endpoints de `/domains/*` con la API key del cliente tampoco cambiaron.
+</Info>
+
 <Steps>
   <Step title="Crea el cliente completo">
     Con tu **partner-key** (`sk_partner_...`, la emite RQE al habilitar tu cuenta de partner):
@@ -106,6 +110,8 @@ curl -X POST https://api.reallyquickemails.com/v1/partner/projects/{project_id}/
 ```
 
 Sin el flag, la API responde `422 DOMAIN_NOT_VERIFIED`. Es a propósito.
+
+Esa exigencia es **solo del endpoint nuevo** `POST /v1/partner/projects/{id}/senders`. Si hoy verificas remitentes con [`POST /domains/verify-email`](/api-reference/domains#post-domainsverify-email) y la API key del cliente, ese camino sigue funcionando igual, sin flag y sin este error.
 
 <Warning>
   **El magic link no sirve para volumen.** Verifica la casilla, no el dominio: el correo sale firmado con el dominio compartido de la plataforma, así que Microsoft rechaza con `5.7.515` por DMARC fail y Gmail responde `550-5.7.1 "likely unsolicited mail"`. Tampoco habilita reply domain ni tracking domain.

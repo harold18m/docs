@@ -11,6 +11,10 @@ This guide is for **partners**: integrators offering email to **their own custom
 
 The whole onboarding fits in **one call with your partner key**: the project, its sending domain with the complete DNS pack, and its sender. You don't need the customer's API key to configure them.
 
+<Info>
+  **Compatibility: if you already integrated the previous flow, you don't need to change anything.** `POST /v1/partner/projects` with just `{ "name": "..." }` is still valid and returns the same response as always; `domain` and `sender` are new, optional fields. The `/domains/*` endpoints called with the customer's API key didn't change either.
+</Info>
+
 <Steps>
   <Step title="Create the whole customer">
     With your **partner key** (`sk_partner_...`, issued by RQE when your partner account is enabled):
@@ -106,6 +110,8 @@ curl -X POST https://api.reallyquickemails.com/v1/partner/projects/{project_id}/
 ```
 
 Without the flag, the API answers `422 DOMAIN_NOT_VERIFIED`. That's on purpose.
+
+That requirement belongs **only to the new endpoint** `POST /v1/partner/projects/{id}/senders`. If you verify senders today with [`POST /domains/verify-email`](/en/api-reference/domains#post-domainsverify-email) and the customer's API key, that path keeps working the same, with no flag and no such error.
 
 <Warning>
   **The magic link is not for volume.** It verifies the mailbox, not the domain: mail goes out signed with the platform's shared domain, so Microsoft rejects with `5.7.515` on DMARC fail and Gmail answers `550-5.7.1 "likely unsolicited mail"`. It also unlocks neither reply domain nor tracking domain.

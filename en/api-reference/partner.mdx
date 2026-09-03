@@ -50,7 +50,13 @@ This is the recommended path. A single `POST` creates the project, registers the
 
 ## POST /v1/partner/projects
 
-Creates a client project inside your partner organization. The `slug` and `api_key` are generated automatically. If you pass `domain` and `sender`, onboarding completes in this same call.
+Creates a client project inside your partner organization. The `slug` and `api_key` are generated automatically.
+
+**The only required field is `name`.** `domain` and `sender` are optional and new: if you pass them, onboarding completes in this same call. If you don't, the endpoint responds exactly as before.
+
+<Info>
+  **Compatibility: if you already integrated the previous flow, you don't need to change anything.** The call with just `{ "name": "..." }` is still valid and its response did not change. The new fields add to it, they don't replace it.
+</Info>
 
 ### Request Body
 
@@ -58,11 +64,53 @@ Creates a client project inside your partner organization. The `slug` and `api_k
 | -------------- | ------ | -------- | ------------------------------------------------------------------------------------------------ |
 | `name`         | string | Yes      | Client name (e.g. `Phrasso`).                                                                    |
 | `external_key` | string | No       | Your internal identifier for the client (max 200 characters). Makes the call **idempotent**.     |
-| `domain`       | string | No       | The client's sending domain (e.g. `phrasso.com`). Triggers registration and the full DNS pack.   |
-| `sender`       | object | No       | `{ "name": "Phrasso", "email": "hello@phrasso.com" }`. See [Senders](#client-senders).           |
+| `domain`       | string | No       | **New.** The client's sending domain (e.g. `phrasso.com`). Triggers registration and the full DNS pack. |
+| `sender`       | object | No       | **New.** `{ "name": "Phrasso", "email": "hello@phrasso.com" }`. See [Senders](#client-senders).  |
 | `webhook_url`  | string | No       | HTTPS webhook URL for the project. If omitted, it inherits your root project's.                  |
 | `timezone`     | string | No       | IANA timezone (e.g. `America/Lima`).                                                             |
 | `country`      | string | No       | Client's country code.                                                                           |
+
+### Minimal example — project only
+
+The original flow, unchanged. It creates the project and returns its API key; you configure the domain and the sender afterwards with the endpoints below.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Phrasso" }'
+```
+
+</Tab><Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/partner/projects",
+    headers={"Authorization": "Bearer sk_partner_xxxxxxxxxxxx"},
+    json={"name": "Phrasso"},
+)
+print(resp.json())
+```
+
+</Tab></Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "slug": "phrasso",
+  "api_key": "sk_proj_xxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+### Example — full onboarding
+
+With `domain` and `sender`, the same call registers the domain and creates the sender. The response adds the `domain` and `sender` keys to the three above.
 
 <Tabs><Tab title="cURL">
 
@@ -155,13 +203,17 @@ print(resp.json())
 
 Per-record `status`: `not_set`, `propagating`, `mismatch` or `verified`. Details for each one in [Domains](/en/api-reference/domains#generated-dns-records).
 
+<Note>
+  **The `records` name belongs only to the endpoints under `/v1/partner`.** The ones under [`/domains/*`](/en/api-reference/domains), called with the client's API key, still return the array as `dns_records`. Nothing changed there.
+</Note>
+
 ### Idempotency
 
 With `external_key`, retrying the call **returns the same project** instead of duplicating it. It's the field that ties the customer in your system to the RQE project: always use it.
 
 ### Partial onboarding
 
-If the project is created but a later step fails (for example, the domain already belongs to another project), the response comes back with `partial: true` and the detail in `errors[]`. **The project and its `api_key` are valid**: retry only the step that failed, with its own endpoint.
+This only applies if you passed `domain` or `sender`. If the project is created but one of those steps fails (for example, the domain already belongs to another project), the response comes back with `partial: true` and the detail in `errors[]`. **The project and its `api_key` are valid**: retry only the step that failed, with its own endpoint.
 
 ```json
 {
@@ -569,6 +621,10 @@ If the address's domain isn't verified and you did **not** send the flag:
 ```
 
 With `allow_unauthenticated: true` a verification email is sent to the address and the sender is created with `sender_source: "magic_link"`, `domain_authenticated: false` and `email_verified: false` until the recipient clicks.
+
+<Note>
+  **The verified-domain requirement belongs only to this endpoint.** [`POST /domains/verify-email`](/en/api-reference/domains#post-domainsverify-email) and the rest of `/domains/*`, called with the client's API key, work exactly as before: they don't ask for the flag and don't return `DOMAIN_NOT_VERIFIED`.
+</Note>
 
 <Warning>
   **The magic link is the exception, not the shortcut.** It verifies the mailbox, not the domain: SES signs with `d=amazonses.com`, so DKIM is never aligned with the client's domain. Use it only when the client doesn't control their DNS, and never for volume. See [Before you send volume](#before-you-send-volume).
