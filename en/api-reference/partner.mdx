@@ -1,14 +1,14 @@
 ---
 title: Partner / Provisioning
-description: "Create client projects via API with your partner key to offer email to your own clients."
+description: "Create and configure client projects via API with your partner key: authenticated domain, sender, API key and webhook in a single call."
 ---
 
-If you integrate RQE as a **platform for your own clients** (partner/reseller pattern), these endpoints let you **create a client project via API** and get its API key to operate on their behalf: register their reply/tracking domain, send, manage contacts.
+If you integrate RQE as a **platform for your own clients** (partner/reseller pattern), these endpoints let you **create and fully configure a client project via API**: its sending domain with the DNS pack, its sender, its API key and its webhook. All with your partner key, without ever holding the client's key.
 
 **Base URL:** `https://api.reallyquickemails.com`
 
 <Info>
-  **Each client = one project.** The reply domain, tracking domain and stats are **per project**, so each of your clients is an independent RQE project with its own API key. These endpoints create and list those projects inside **your** partner organization.
+  **Each client = one project.** The domain, reply domain, limits and stats are **per project**, so each of your clients is an independent RQE project with its own API key. These endpoints create, configure and list those projects inside **your** partner organization.
 </Info>
 
 ## Authentication
@@ -19,33 +19,64 @@ Partner endpoints use a dedicated **partner key** (distinct from project API key
 Authorization: Bearer sk_partner_xxxxxxxxxxxx
 ```
 
-The partner key is tied to your organization and can only create and view projects **within it**. It's dedicated and revocable without affecting your sends. It's issued by RQE when your partner account is enabled. A missing or invalid key returns `401`.
+The partner key is tied to your organization and can only operate projects **within it**. It's dedicated and revocable without affecting your sends. It's issued by RQE when your partner account is enabled. A missing or invalid key returns `401`. A `projectId` that doesn't belong to your organization returns `404`, never `403`: from the outside, someone else's project is indistinguishable from one that doesn't exist.
 
-## Flow
+<Warning>
+  **The partner key does not send email.** It provisions and configures. To send, manage contacts or read a client's activity, use that project's `api_key` (`sk_proj_...`).
+</Warning>
+
+---
+
+## Full onboarding in one call
+
+This is the recommended path. A single `POST` creates the project, registers the sending domain with the complete DNS pack, and creates the sender on that domain.
 
 <Steps>
-  <Step title="Create the client project">
-    `POST /v1/partner/projects` with the client's name → you get `project_id`, `slug` and its `api_key` (`sk_proj_...`).
+  <Step title="Create the whole client">
+    `POST /v1/partner/projects` with `name`, `domain` and `sender`. You get back `project_id`, `slug`, the client's `api_key`, the DNS records and the public verification link.
   </Step>
-  <Step title="Set up their domain">
-    With the client's `api_key`, register their [reply domain](/en/api-reference/domains#reply-domain-clean-reply-to-token-less) and/or [tracking domain](/en/api-reference/domains#tracking-domain-click-links-on-your-own-domain).
+  <Step title="Forward the verification link">
+    `domain.verification_url` is a public page that shows the records and verifies with one button. Your end client opens it without an RQE account: it's the only thing you need to send them.
+  </Step>
+  <Step title="Wait for the `domain.verified` webhook">
+    Don't poll. RQE re-verifies on its own and notifies you by webhook once DNS propagates. See [Webhooks](/en/api-reference/webhooks#domainverified-domainfailed).
   </Step>
   <Step title="Operate on their behalf">
-    Use the client's `api_key` to [send](/en/api-reference/public-api), manage [contacts](/en/api-reference/leads) and view activity — all isolated to that project.
+    With the client's `api_key`, [send](/en/api-reference/public-api), manage [contacts](/en/api-reference/leads) and read activity — all isolated to that project.
   </Step>
 </Steps>
 
+---
+
 ## POST /v1/partner/projects
 
-Creates a client project inside your partner organization. The `api_key` and `slug` are generated automatically.
+Creates a client project inside your partner organization. The `slug` and `api_key` are generated automatically.
+
+**The only required field is `name`.** `domain` and `sender` are optional and new: if you pass them, onboarding completes in this same call. If you don't, the endpoint responds exactly as before.
+
+<Info>
+  **Compatibility: if you already integrated the previous flow, you don't need to change anything.** The call with just `{ "name": "..." }` is still valid and its response did not change. The new fields add to it, they don't replace it.
+</Info>
 
 ### Request Body
 
-| Field      | Type   | Required | Description                                    |
-| ---------- | ------ | -------- | ---------------------------------------------- |
-| `name`     | string | Yes      | Client name (e.g. `Phrasso`).                  |
-| `timezone` | string | No       | IANA timezone (e.g. `America/Lima`).           |
-| `country`  | string | No       | Client's country code.                         |
+| Field          | Type   | Required | Description                                                                                    |
+| -------------- | ------ | -------- | ------------------------------------------------------------------------------------------------ |
+| `name`         | string | Yes      | Client name (e.g. `Phrasso`).                                                                    |
+| `external_key` | string | No       | Your internal identifier for the client (max 200 characters). Makes the call **idempotent**.     |
+| `domain`       | string | No       | **New.** The client's sending domain (e.g. `phrasso.com`). Always travels together with `sender`. |
+| `sender`       | object | No       | **New.** `{ "name": "Phrasso", "email": "hello@phrasso.com" }`. Always travels together with `domain`. |
+| `webhook_url`  | string | No       | HTTPS webhook URL for the project. If omitted, it inherits your root project's.                  |
+| `timezone`     | string | No       | IANA timezone (e.g. `America/Lima`).                                                             |
+| `country`      | string | No       | Client's country code.                                                                           |
+
+<Warning>
+  **`domain` and `sender` travel together or not at all.** SES won't register a domain without a `From` address, so there's no way to onboard one without the other. If you send only one, the response is `400` **before anything is created**: `SENDER_REQUIRED_FOR_DOMAIN` or `DOMAIN_REQUIRED_FOR_SENDER`. And if the address doesn't end in the domain, `400 SENDER_DOMAIN_MISMATCH`.
+</Warning>
+
+### Minimal example — project only
+
+The original flow, unchanged. It creates the project and returns its API key; you configure the domain and the sender afterwards with the endpoints below.
 
 <Tabs><Tab title="cURL">
 
@@ -81,9 +112,153 @@ print(resp.json())
 }
 ```
 
+### Example — full onboarding
+
+With `domain` and `sender`, the same call registers the domain and creates the sender. The response adds the `domain` and `sender` keys to the three above.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Phrasso",
+    "external_key": "cli_8842",
+    "domain": "phrasso.com",
+    "sender": { "name": "Phrasso", "email": "hello@phrasso.com" },
+    "webhook_url": "https://yourapp.com/hooks/rqe",
+    "timezone": "America/Lima",
+    "country": "PE"
+  }'
+```
+
+</Tab><Tab title="Python">
+
+```python
+import requests
+
+resp = requests.post(
+    "https://api.reallyquickemails.com/v1/partner/projects",
+    headers={"Authorization": "Bearer sk_partner_xxxxxxxxxxxx"},
+    json={
+        "name": "Phrasso",
+        "external_key": "cli_8842",
+        "domain": "phrasso.com",
+        "sender": {"name": "Phrasso", "email": "hello@phrasso.com"},
+    },
+)
+print(resp.json())
+```
+
+</Tab></Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "slug": "phrasso",
+  "api_key": "sk_proj_xxxxxxxxxxxxxxxxxxxxxxxx",
+  "domain": {
+    "domain": "phrasso.com",
+    "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+    "verification_status": "pending",
+    "can_send": false,
+    "verification_url": "https://app.reallyquickemails.com/verificar-dominio/9f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+    "reply_domain": { "domain": "reply.phrasso.com", "status": "pending" },
+    "tracking_domain": { "domain": "links.phrasso.com", "status": "pending" },
+    "records": [
+      { "record_type": "TXT",   "name": "_amazonses",        "fqdn": "_amazonses.phrasso.com",        "value": "abcdef1234567890abcdef1234567890",            "purpose": "ses_verification",  "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "CNAME", "name": "abc123._domainkey", "fqdn": "abc123._domainkey.phrasso.com", "value": "abc123.dkim.amazonses.com",                    "purpose": "dkim",              "status": "not_set", "ttl_hint": 1800 },
+      { "record_type": "CNAME", "name": "def456._domainkey", "fqdn": "def456._domainkey.phrasso.com", "value": "def456.dkim.amazonses.com",                    "purpose": "dkim",              "status": "not_set", "ttl_hint": 1800 },
+      { "record_type": "CNAME", "name": "ghi789._domainkey", "fqdn": "ghi789._domainkey.phrasso.com", "value": "ghi789.dkim.amazonses.com",                    "purpose": "dkim",              "status": "not_set", "ttl_hint": 1800 },
+      { "record_type": "TXT",   "name": "@",                 "fqdn": "phrasso.com",                   "value": "v=spf1 include:amazonses.com ~all",            "purpose": "spf",               "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "TXT",   "name": "_dmarc",            "fqdn": "_dmarc.phrasso.com",            "value": "v=DMARC1; p=none; rua=mailto:d-8a1f6e2c@dmarc.reallyquickemails.com", "purpose": "dmarc", "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "MX",    "name": "send",              "fqdn": "send.phrasso.com",              "value": "10 feedback-smtp.us-east-1.amazonses.com",     "purpose": "return_path",       "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "TXT",   "name": "send",              "fqdn": "send.phrasso.com",              "value": "v=spf1 include:amazonses.com ~all",            "purpose": "return_path",       "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "CNAME", "name": "links.phrasso.com", "fqdn": "links.phrasso.com",             "value": "track.reallyquickemails.com",                  "purpose": "tracking",          "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "TXT",   "name": "_amazonses.reply.phrasso.com", "fqdn": "_amazonses.reply.phrasso.com", "value": "fedcba0987654321fedcba0987654321", "purpose": "reply_verification", "status": "not_set", "ttl_hint": 300 },
+      { "record_type": "MX",    "name": "reply.phrasso.com", "fqdn": "reply.phrasso.com",             "value": "inbound-smtp.us-east-1.amazonaws.com", "priority": 10, "purpose": "reply_inbound", "status": "not_set", "ttl_hint": 300 }
+    ]
+  },
+  "sender": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Phrasso",
+    "from_email": "hello@phrasso.com",
+    "sender_source": "manual",
+    "domain_authenticated": false,
+    "email_verified": false,
+    "can_send": false,
+    "external_key": null,
+    "created_at": "2026-07-22T16:00:00.000Z"
+  }
+}
+```
+
 <Warning>
-  The `api_key` is returned **only once**, at creation. Store it securely — it's the credential you operate that client project with.
+  The `api_key` is returned **only once**, at creation. Store it securely — it's the credential you operate that client project with. If you lose it, rotate it with `POST /v1/partner/projects/{projectId}/api-key/rotate`.
 </Warning>
+
+That `sender` shape — with `id`, `sender_source`, `can_send` and `created_at` — is **the same in all four places** a sender shows up: project creation, domain registration, sender creation and the project detail.
+
+### The DNS pack
+
+`domain.records` carries the full pack, not just DKIM. It's derived entirely in one call.
+
+<Tip>
+  **The client publishes `fqdn`, not `name`.** SES-generated records are **relative** to the domain (`_amazonses`, `@`, `_dmarc`, `send`), while the reply and tracking ones are **absolute**. `fqdn` is always the ready-to-paste name, no thinking required; `name` is there so it matches what the [`/domains/*`](/en/api-reference/domains) endpoints show.
+</Tip>
+
+| Type    | `purpose`                             | What it's for                                                    |
+| ------- | ------------------------------------- | ------------------------------------------------------------------ |
+| TXT     | `ses_verification`                    | Proof of domain ownership.                                         |
+| CNAME   | `dkim`                                | DKIM signing on the client's domain. There are **3**.              |
+| TXT     | `spf`                                 | SPF at the root.                                                   |
+| TXT     | `dmarc`                               | Managed DMARC, at `p=none` so reports start flowing.               |
+| MX, TXT | `return_path`                         | Custom MAIL FROM on `send.`: bounces and complaints aligned.       |
+| CNAME   | `tracking`                            | Click links on `links.`, using the client's own domain.            |
+| TXT, MX | `reply_verification`, `reply_inbound` | Clean, token-less Reply-To on `reply.`.                            |
+
+Per-record `status`: `not_set`, `propagating`, `mismatch` or `verified`. The `priority` field appears only on the reply MX; the `send` one carries its priority inside `value`. Details for each record in [Domains](/en/api-reference/domains#generated-dns-records).
+
+<Note>
+  **The `records` name belongs only to the endpoints under `/v1/partner`.** The ones under [`/domains/*`](/en/api-reference/domains), called with the client's API key, still return the array as `dns_records`. Nothing changed there.
+</Note>
+
+**The full pack is built when the domain is new.** Reply and tracking are best effort: if either fails, the domain is still registered and the reason travels in `warnings[]`. And if the project already had one of the two, that step is **skipped** and reported in `skipped[]` — see [Skipped steps](#skipped-steps).
+
+### Idempotency
+
+With `external_key`, retrying the call **returns the same project** instead of duplicating it. It's the field that ties the customer in your system to the RQE project: always use it.
+
+If the `external_key` belongs to a **disabled** client, the response is `409 PROJECT_DISABLED` with the `project_id` in the body, so you know which one to reactivate.
+
+### Partial onboarding
+
+This only applies if you passed `domain` and `sender`. If the project is created but domain registration fails, the response comes back with `partial: true` and the detail in `errors[]`. **The project and its `api_key` are valid**: retry the domain with `POST /v1/partner/projects/{projectId}/domains`.
+
+Every entry in `errors[]` and `warnings[]` is `{ step, error_code, error }`. In `errors[]`, `step` only takes the value `domain`: the sender is created **inside** domain registration, so there's no separate step of its own that can fail. In `warnings[]`, `step` takes `reply_domain`, `tracking_domain` or `verification_link` — the best-effort steps that don't sink the onboarding.
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "slug": "phrasso",
+  "api_key": "sk_proj_xxxxxxxxxxxxxxxxxxxxxxxx",
+  "partial": true,
+  "domain": null,
+  "sender": null,
+  "errors": [
+    { "step": "domain", "error_code": "DOMAIN_SENDER_CONFLICT", "error": "phrasso.com is already tied to another verified sender." }
+  ]
+}
+```
+
+<Note>
+  **We never drop a step silently.** If you see neither `partial` nor `warnings` in the response, everything went through.
+</Note>
+
+---
 
 ## GET /v1/partner/projects
 
@@ -107,12 +282,187 @@ curl https://api.reallyquickemails.com/v1/partner/projects \
       "id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
       "name": "Phrasso",
       "slug": "phrasso",
+      "external_key": "cli_8842",
       "created_at": "2026-07-22T16:00:00.000Z",
       "disabled_at": null
     }
   ]
 }
 ```
+
+---
+
+## GET /v1/partner/projects/&#123;projectId&#125;
+
+Detail of one client project. The response has four blocks: `project`, `domains`, `senders` and `health`.
+
+This is the call to build your own client panel with: it says at a glance who can send well and who can't.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2 \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "project": {
+    "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+    "name": "Phrasso",
+    "slug": "phrasso",
+    "external_key": "cli_8842",
+    "timezone": "America/Lima",
+    "country": "PE",
+    "webhook_url": "https://yourapp.com/hooks/rqe",
+    "inbound_webhook_url": "https://yourapp.com/hooks/replies",
+    "tracking_domain": "links.phrasso.com",
+    "tracking_domain_status": "verified",
+    "reply_domain": "reply.phrasso.com",
+    "reply_domain_status": "verified",
+    "disabled": false,
+    "disabled_at": null,
+    "created_at": "2026-07-22T16:00:00.000Z",
+    "updated_at": "2026-07-24T09:12:00.000Z"
+  },
+  "domains": [
+    {
+      "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+      "domain": "phrasso.com",
+      "verification_status": "verified",
+      "can_send": true,
+      "external_key": null,
+      "created_at": "2026-07-22T16:00:00.000Z",
+      "sender_profile": { "from_name": "Phrasso", "from_email": "hello@phrasso.com" },
+      "verification_url": "https://app.reallyquickemails.com/verificar-dominio/9f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+      "records": []
+    }
+  ],
+  "senders": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "from_name": "Phrasso",
+      "from_email": "hello@phrasso.com",
+      "sender_source": "manual",
+      "domain_authenticated": true,
+      "email_verified": true,
+      "can_send": true,
+      "external_key": null,
+      "created_at": "2026-07-22T16:00:00.000Z"
+    }
+  ],
+  "health": {
+    "period_days": 30,
+    "status": "warning",
+    "can_send": true,
+    "dkim_verified": true,
+    "domains_total": 2,
+    "domains_authenticated": 1,
+    "sent": 2509,
+    "hard_bounce_rate": 0.44,
+    "issues": ["DMARC not configured: without it there are no reports and no policy against spoofing."],
+    "by_domain": [
+      {
+        "domain": "phrasso.com",
+        "status": "warning",
+        "can_send": true,
+        "sent": 2509,
+        "hard_bounce_rate": 0.44,
+        "auth": { "ses": "verified", "spf": "verified", "dmarc": "not_set", "dkim": "verified" },
+        "issues": ["DMARC not configured: without it there are no reports and no policy against spoofing."]
+      }
+    ]
+  }
+}
+```
+
+### The `health` block
+
+It's **per project**, not the shape of [`GET /domains/health`](/en/api-reference/domains#get-domainshealth): there's no `summary` and no `data` here.
+
+| Field                   | Description                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `status`                | `healthy` · `warning` · `critical`, for the whole client.                                      |
+| `can_send`              | Whether the client has at least one domain that can send.                                      |
+| `dkim_verified`         | Whether DKIM is verified. **That's the field name, not `dkim`** — that one belongs to `by_domain[].auth`. |
+| `domains_total`         | Domains registered in the project.                                                             |
+| `domains_authenticated` | How many of them are authenticated. The gap between the two is the work left to do.            |
+| `sent`                  | Sends in the window (`period_days`).                                                           |
+| `hard_bounce_rate`      | The client's hard bounce rate, **weighted by volume** — not the average of the per-domain rates. |
+| `issues`                | What's missing, in actionable text. You can forward it to your client as-is.                   |
+| `by_domain`             | The usual per-domain health, with `auth: { ses, spf, dmarc, dkim }`.                           |
+
+<Warning>
+  **`can_send: true` with `status: critical` is the costliest case.** Mail goes out with a `200` and nothing looks broken, but it ships without DKIM on the client's domain. See [Before you send volume](#before-you-send-volume).
+</Warning>
+
+---
+
+## PATCH /v1/partner/projects/&#123;projectId&#125;
+
+Updates the client project's data. Only the fields you send are touched.
+
+### Request Body
+
+| Field                 | Type   | Description                                                |
+| --------------------- | ------ | ------------------------------------------------------------ |
+| `name`                | string | New client name. The `slug` does **not** change.             |
+| `webhook_url`         | string | HTTPS URL for **outbound** webhooks (email events, `domain.verified`). |
+| `inbound_webhook_url` | string | HTTPS URL for **inbound** webhooks (replies from recipients). |
+| `timezone`            | string | IANA timezone.                                               |
+| `country`             | string | Country code.                                                |
+
+A `PATCH` with no recognized field returns `400 EMPTY_PATCH`.
+
+<Warning>
+  **`webhook_url` and `inbound_webhook_url` are two independent fields.** Writing one does **not** touch the other. Onboarding leaves them equal only because they're born empty and inherit the same value for both; from then on they live separately. If your integration has the outbound one at `null` and the inbound one pointing at your replies endpoint, sending `webhook_url` in a `PATCH` will **not** divert your reply routing.
+</Warning>
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X PATCH https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2 \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "webhook_url": "https://yourapp.com/hooks/rqe/v2", "country": "CL" }'
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK` — the updated project, wrapped in `project`.
+
+```json
+{
+  "project": {
+    "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+    "name": "Phrasso",
+    "slug": "phrasso",
+    "external_key": "cli_8842",
+    "timezone": "America/Lima",
+    "country": "CL",
+    "webhook_url": "https://yourapp.com/hooks/rqe/v2",
+    "inbound_webhook_url": "https://yourapp.com/hooks/replies",
+    "tracking_domain": "links.phrasso.com",
+    "tracking_domain_status": "verified",
+    "reply_domain": "reply.phrasso.com",
+    "reply_domain_status": "verified",
+    "disabled": false,
+    "disabled_at": null,
+    "created_at": "2026-07-22T16:00:00.000Z",
+    "updated_at": "2026-07-24T09:12:00.000Z"
+  }
+}
+```
+
+<Note>
+  **`PATCH` works on a disabled client, on purpose.** That way you can fix its `webhook_url` **before** reactivating it, instead of bringing it back broken. The `slug`, by contrast, is stable for life: tracking links in already-sent emails depend on it, and changing `name` does not move it.
+</Note>
+
+---
 
 ## DELETE /v1/partner/projects/&#123;projectId&#125;
 
@@ -133,11 +483,506 @@ curl -X DELETE https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e
 { "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2", "disabled": true }
 ```
 
-## Error codes
+---
 
-| Code  | Description                                                         |
-| ----- | ------------------------------------------------------------------ |
-| `400` | `MISSING_NAME` — `name` is missing.                                |
-| `401` | Missing or invalid partner key.                                    |
-| `404` | `NOT_FOUND` — the project doesn't exist in your org (on DELETE).   |
-| `500` | `NO_OWNER` (org without owner) / `CREATE_FAILED` (creation error). |
+## POST /v1/partner/projects/&#123;projectId&#125;/reactivate
+
+Undoes the soft-disable: clears `disabled_at` and the project can send again. It's **idempotent** — reactivating one that is already active returns `200`, never `409`.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/reactivate \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK` — it carries the full project, same shape as `PATCH`.
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "disabled": false,
+  "project": {
+    "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+    "name": "Phrasso",
+    "slug": "phrasso",
+    "disabled": false,
+    "disabled_at": null,
+    "updated_at": "2026-07-24T09:12:00.000Z"
+  }
+}
+```
+
+---
+
+## Client domains
+
+The same domains as `/domains/*`, but with **your partner key** and the client's `projectId` in the path: you don't need each client's `api_key` on hand.
+
+### POST /v1/partner/projects/&#123;projectId&#125;/domains
+
+Registers the client's sending domain, derives the [full DNS pack](#the-dns-pack) and creates the public verification link.
+
+| Field          | Type   | Required | Description                                                        |
+| -------------- | ------ | -------- | -------------------------------------------------------------------- |
+| `domain`       | string | Yes      | The client's domain (e.g. `phrasso.com`).                           |
+| `sender`       | object | Yes      | `{ "name": "Phrasso", "email": "hello@phrasso.com" }`. The address must end in the domain. |
+| `external_key` | string | No       | Your internal identifier for the domain.                            |
+
+<Warning>
+  **The sender is required and nested under `sender`**, not passed as loose `sender_name` and `sender_email`. SES won't register a domain without a `From` address, so there's no bare domain registration.
+</Warning>
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/domains \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "phrasso.com",
+    "sender": { "name": "Phrasso", "email": "hello@phrasso.com" }
+  }'
+```
+
+</Tab></Tabs>
+
+**Response** `201 Created` — or `200 OK` with `reused: true` if the domain was already registered. The pack comes at the top level, unwrapped.
+
+```json
+{
+  "domain": "phrasso.com",
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "verification_status": "pending",
+  "can_send": false,
+  "reused": false,
+  "verification_url": "https://app.reallyquickemails.com/verificar-dominio/9f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+  "reply_domain": { "domain": "reply.phrasso.com", "status": "pending" },
+  "tracking_domain": { "domain": "links.phrasso.com", "status": "pending" },
+  "records": [
+    { "record_type": "TXT", "name": "_amazonses", "fqdn": "_amazonses.phrasso.com", "value": "abcdef1234567890abcdef1234567890", "purpose": "ses_verification", "status": "not_set", "ttl_hint": 300 }
+  ],
+  "sender": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Phrasso",
+    "from_email": "hello@phrasso.com",
+    "sender_source": "manual",
+    "domain_authenticated": false,
+    "email_verified": false,
+    "can_send": false,
+    "external_key": null,
+    "created_at": "2026-07-22T16:00:00.000Z"
+  },
+  "warnings": [],
+  "skipped": []
+}
+```
+
+<Note>
+  **Domain registration is idempotent.** Repeating it on an already-registered domain returns `200` with `reused: true` and its existing records, instead of failing. Retrying an onboarding that got half-way is safe.
+</Note>
+
+#### Skipped steps
+
+`skipped[]` is a sibling of `warnings[]` and says **what wasn't done and why**. The difference matters: `warnings[]` is a step that was attempted and failed; `skipped[]` is a step that was deliberately not attempted, because doing it would have broken something already working.
+
+| `step`            | `reason_code`                   | What happened                                                            |
+| ----------------- | ------------------------------- | ---------------------------------------------------------------------------- |
+| `pack`            | `DOMAIN_ALREADY_REGISTERED`     | The domain was already registered. Nothing else about the client is touched. |
+| `reply_domain`    | `REPLY_DOMAIN_ALREADY_VERIFIED` | The client already had a verified reply domain.                              |
+| `tracking_domain` | `TRACKING_DOMAIN_ALREADY_SET`   | The client already had a tracking domain configured.                         |
+
+```json
+{
+  "domain": "phrasso.com",
+  "reused": true,
+  "warnings": [],
+  "skipped": [
+    { "step": "pack", "reason_code": "DOMAIN_ALREADY_REGISTERED", "reason": "phrasso.com was already registered in this project." }
+  ]
+}
+```
+
+<Warning>
+  **Why a working reply domain is never overwritten.** Registering one rewrites its status to `pending`, and on a client whose branded replies were already running that switches them off until somebody re-verifies. We'd rather skip the step and tell you than break reply for a client in production.
+</Warning>
+
+`skipped[]` is only populated by this `POST`. `GET /v1/partner/projects/{projectId}/domains/{domain}` always returns `skipped: []`.
+
+<Tip>
+  **The `verification_url` is what you send the end client.** It's a public page showing their records with copy buttons and a verify button. It exposes nothing about the project: only the domain and its records, which are public by definition. Your client does not need an RQE account.
+</Tip>
+
+### GET /v1/partner/projects/&#123;projectId&#125;/domains
+
+Lists the client's domains with their status.
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/domains \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "domains": [
+    {
+      "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+      "domain": "phrasso.com",
+      "verification_status": "verified",
+      "can_send": true,
+      "external_key": null,
+      "created_at": "2026-07-22T16:00:00.000Z",
+      "sender_profile": { "from_name": "Phrasso", "from_email": "hello@phrasso.com" },
+      "verification_url": "https://app.reallyquickemails.com/verificar-dominio/9f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+    }
+  ]
+}
+```
+
+<Warning>
+  **`verification_url` can come back `null`.** The `GET`s never create the token: they only return it if it already exists. The one that creates it is `POST /v1/partner/projects/{projectId}/domains` and, since that registration is idempotent, **re-posting an old domain is how you get it a link**. If you integrated before this page existed, your older domains will show `null` until you do.
+</Warning>
+
+### GET /v1/partner/projects/&#123;projectId&#125;/domains/&#123;domain&#125;
+
+Record-by-record status, with no external lookups. This is what you show in your panel while the client publishes DNS.
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/domains/phrasso.com \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "domain": "phrasso.com",
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "verification_status": "pending",
+  "can_send": false,
+  "verification_url": "https://app.reallyquickemails.com/verificar-dominio/9f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+  "reply_domain": { "domain": "reply.phrasso.com", "status": "pending" },
+  "tracking_domain": { "domain": "links.phrasso.com", "status": "pending" },
+  "records": [
+    { "record_type": "CNAME", "name": "abc123._domainkey", "fqdn": "abc123._domainkey.phrasso.com", "value": "abc123.dkim.amazonses.com", "purpose": "dkim", "status": "verified", "ttl_hint": 1800 },
+    { "record_type": "TXT", "name": "_dmarc", "fqdn": "_dmarc.phrasso.com", "value": "v=DMARC1; p=none; rua=mailto:d-8a1f6e2c@dmarc.reallyquickemails.com", "purpose": "dmarc", "status": "not_set", "ttl_hint": 300 }
+  ],
+  "skipped": []
+}
+```
+
+`skipped` always comes back empty here: only the onboarding `POST` fills it. A domain that doesn't exist in the project returns `404 DOMAIN_NOT_FOUND`.
+
+### POST /v1/partner/projects/&#123;projectId&#125;/domains/&#123;domain&#125;/verify
+
+Forces verification **of the sending domain**: queries SES, updates the stored record status and answers whether the domain can send. Call it when the client tells you "it's configured".
+
+It covers identity, DKIM and MAIL FROM. **It does not verify the reply domain or the tracking domain.**
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/domains/phrasso.com/verify \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "domain": "phrasso.com",
+  "identity_id": "8a1f6e2c-3b4d-4f5a-9c6e-7d8f9a0b1c2d",
+  "verification_status": "verified",
+  "can_send": true,
+  "records": [
+    { "record_type": "CNAME", "name": "abc123._domainkey", "fqdn": "abc123._domainkey.phrasso.com", "purpose": "dkim", "status": "verified" }
+  ]
+}
+```
+
+The response also carries `reply_domain` and `tracking_domain`, but **read-only**: they are each one's current state, not something this call verified.
+
+<Warning>
+  **The verify deliberately leaves tracking alone.** Verifying it writes `pending` the moment a DNS lookup doesn't resolve, and sending requires `verified` to use the client's domain. A slow DNS would have sent every link in their mail back to the shared domain with nobody asking for it. The same goes for reply. To force those two there are dedicated endpoints, called with the tenant's API key: see [reply domain](/en/api-reference/domains#post-domainsreplyverify) and [tracking domain](/en/api-reference/domains#post-apiprojectsprojectidtracking-domainverify).
+</Warning>
+
+<Info>
+  **No need to poll.** Domains in `pending` re-verify on their own — often on day one, more spaced out later — and when they turn verified RQE emits the `domain.verified` webhook to the project's `webhook_url`. `verify` is for an immediate answer, not a replacement for the webhook.
+</Info>
+
+---
+
+## Client senders
+
+### GET /v1/partner/projects/&#123;projectId&#125;/senders
+
+Lists the client's senders and **how each one was verified**.
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/senders \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "senders": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "from_name": "Phrasso",
+      "from_email": "hello@phrasso.com",
+      "sender_source": "manual",
+      "domain_authenticated": true,
+      "email_verified": true,
+      "can_send": true,
+      "external_key": null,
+      "created_at": "2026-07-22T16:00:00.000Z"
+    },
+    {
+      "id": "223e4567-e89b-12d3-a456-426614174001",
+      "from_name": "Sales",
+      "from_email": "sales@gmail.com",
+      "sender_source": "magic_link",
+      "domain_authenticated": false,
+      "email_verified": true,
+      "can_send": true,
+      "external_key": null,
+      "created_at": "2026-07-23T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+`sender_source` says where the sender came from: `manual` (created on a registered domain), `magic_link` (verified by email, **no DKIM**), `auto-own-email` or `admin`. A sender with `domain_authenticated: false` and real volume is the pattern that breaks deliverability.
+
+### POST /v1/partner/projects/&#123;projectId&#125;/senders
+
+Creates a sender. **By default it requires a verified domain**: that's the rule that keeps a client from being born sending unauthenticated.
+
+| Field                   | Type    | Required | Description                                                                        |
+| ----------------------- | ------- | -------- | ------------------------------------------------------------------------------------ |
+| `name`                  | string  | Yes      | Sender display name.                                                                 |
+| `email`                 | string  | Yes      | Sender address.                                                                      |
+| `external_key`          | string  | No       | Your internal identifier for the sender.                                             |
+| `allow_unauthenticated` | boolean | No       | `true` to allow email verification (magic link) when the domain isn't verified. Defaults to `false`. |
+
+`name` and `email` are accepted **loose in the body or nested under `sender`**: both forms work.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/senders \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Phrasso", "email": "hello@phrasso.com" }'
+```
+
+</Tab></Tabs>
+
+**Response** `201 Created`
+
+```json
+{
+  "sender": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_name": "Phrasso",
+    "from_email": "hello@phrasso.com",
+    "sender_source": "manual",
+    "domain_authenticated": true,
+    "email_verified": true,
+    "can_send": true,
+    "external_key": null,
+    "created_at": "2026-07-22T16:00:00.000Z"
+  },
+  "path": "domain",
+  "domain": "phrasso.com",
+  "domain_verification_status": "verified"
+}
+```
+
+`path` says which route the sender took: `domain` (on the verified domain) or `magic_link`. On the magic link route the response adds a `warning` noting that this sender has no DKIM.
+
+If the address's domain isn't verified and you did **not** send the flag:
+
+**Response** `422 Unprocessable Entity`
+
+```json
+{
+  "error": "Domain phrasso.com is not verified. Register the domain or send allow_unauthenticated: true to verify the address by magic link.",
+  "code": "DOMAIN_NOT_VERIFIED",
+  "error_code": "DOMAIN_NOT_VERIFIED",
+  "domain": "phrasso.com",
+  "verification_status": "pending"
+}
+```
+
+`verification_status` comes back `null` when the domain isn't even registered.
+
+With `allow_unauthenticated: true` a verification email is sent to the address and the sender is created with `sender_source: "magic_link"`, `domain_authenticated: false` and `email_verified: false` until the recipient clicks.
+
+<Note>
+  **The verified-domain requirement belongs only to this endpoint.** [`POST /domains/verify-email`](/en/api-reference/domains#post-domainsverify-email) and the rest of `/domains/*`, called with the client's API key, work exactly as before: they don't ask for the flag and don't return `DOMAIN_NOT_VERIFIED`.
+</Note>
+
+<Warning>
+  **The magic link is the exception, not the shortcut.** It verifies the mailbox, not the domain: SES signs with `d=amazonses.com`, so DKIM is never aligned with the client's domain. Use it only when the client doesn't control their DNS, and never for volume. See [Before you send volume](#before-you-send-volume).
+</Warning>
+
+---
+
+## POST /v1/partner/projects/&#123;projectId&#125;/api-key/rotate
+
+Rotates the client project's API key.
+
+<Tabs><Tab title="cURL">
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/api-key/rotate \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+</Tab></Tabs>
+
+**Response** `200 OK`
+
+```json
+{
+  "project_id": "c22e3647-0e4b-4d71-99e2-651dbbac3eb2",
+  "api_key": "sk_proj_yyyyyyyyyyyyyyyyyyyyyyyy",
+  "rotated_at": "2026-07-24T09:12:00.000Z",
+  "message": "The previous API key stopped working."
+}
+```
+
+<Warning>
+  **There is no grace period: the previous key stops authenticating in the same transaction.** The project does not store the old key, so there's no overlap window. Deploy the new one **before** that client calls again, or its requests will fail with `401` until you do.
+</Warning>
+
+---
+
+## GET /v1/partner/projects/&#123;projectId&#125;/stats
+
+The client's sending metrics: deliveries, bounces, opens and clicks.
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/projects/c22e3647-0e4b-4d71-99e2-651dbbac3eb2/stats \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+## GET /v1/partner/whoami
+
+Data about the organization tied to your partner key, with a `partner` block carrying **your project quota**. It's how you know how many clients you have left before you hit `MAX_PROJECTS_REACHED`.
+
+```bash
+curl https://api.reallyquickemails.com/v1/partner/whoami \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "partner": {
+    "id": "61c3a18d-1f2e-4a3b-8c9d-0e1f2a3b4c5d",
+    "name": "Nexor",
+    "status": "active",
+    "max_projects": 200,
+    "root_project_id": "d33f4758-1f5c-4e82-a0f3-762ecc4dfc31"
+  }
+}
+```
+
+`max_projects` set to `null` means no limit. The count is your **active clients**, not counting your root project.
+
+---
+
+## Before you send volume
+
+**Register the client's domain before the first large send.** This isn't a hygiene recommendation: it's the difference between reaching the inbox and not reaching it.
+
+A sender verified by email only (magic link) goes out signed with the platform's shared domain. The result, measured on real clients:
+
+- **Microsoft rejects with `5.7.515`.** It sees `SPF=Pass, DKIM=Pass, DMARC=Fail` because nothing is aligned with the `From` domain, and it cuts off volume senders right there.
+- **Gmail answers `550-5.7.1 "likely unsolicited mail"`.** Without its own DKIM, the client's reputation is mixed with everyone else sending unauthenticated.
+- **No reply domain and no tracking domain.** Both hang off the verified domain.
+
+None of this shows up as an error in your integration: the API returns `200`, the email "sends", and the problem surfaces weeks later in the bounce rate.
+
+<Steps>
+  <Step title="Create the client with their domain">
+    `POST /v1/partner/projects` with `domain` and `sender`. The DNS pack comes back in the response.
+  </Step>
+  <Step title="Forward the verification_url">
+    A public page with the records and a verify button. It's the only thing your end client needs to open, with no RQE account. If their DNS provider supports [Domain Connect](/en/api-reference/domains#get-domainsdomaindomain-connect), publishing is one click.
+  </Step>
+  <Step title="Wait for domain.verified">
+    It arrives by webhook. Only then enable volume sending for that client.
+  </Step>
+  <Step title="Watch their health">
+    `GET /v1/partner/projects/{projectId}` returns `health`. A client in `critical` with `can_send: true` is burning reputation silently.
+  </Step>
+</Steps>
+
+<Warning>
+  **Watch hard bounces, not total bounces.** Providers compute the suspension threshold (~5%) on **permanent** bounces; transient ones don't count. A domain can show a 12% total bounce rate and sit below 1% hard bounce.
+</Warning>
+
+---
+
+## Errors
+
+Every error response has the same shape:
+
+```json
+{
+  "error": "Human-readable message.",
+  "code": "MAX_PROJECTS_REACHED",
+  "error_code": "MAX_PROJECTS_REACHED"
+}
+```
+
+`code` and `error_code` **always carry the same value**. `error_code` is the canonical one; `code` is there for compatibility with existing integrations. Some errors add extra flat fields to the body, so you never have to parse the text.
+
+### Error codes
+
+| Code  | `error_code`                | Description                                                                     |
+| ----- | --------------------------- | --------------------------------------------------------------------------------- |
+| `400` | `MISSING_NAME`              | `name` is missing on project creation.                                            |
+| `400` | `INVALID_EXTERNAL_KEY`      | `external_key` is longer than 200 characters.                                     |
+| `400` | `INVALID_WEBHOOK_URL`       | `webhook_url` is not a valid URL or doesn't use HTTPS.                            |
+| `400` | `INVALID_TIMEZONE`          | `timezone` is not a valid IANA timezone.                                          |
+| `400` | `INVALID_COUNTRY`           | `country` is not a valid country code.                                            |
+| `400` | `EMPTY_PATCH`               | The `PATCH` carries no recognized field.                                          |
+| `400` | `MISSING_DOMAIN`            | `domain` is missing when registering a domain.                                    |
+| `400` | `INVALID_DOMAIN`            | The domain format is invalid.                                                     |
+| `400` | `INVALID_SENDER`            | `sender` is not an object with `name` and `email`.                                |
+| `400` | `MISSING_SENDER_NAME`       | The sender's name is missing.                                                     |
+| `400` | `INVALID_SENDER_EMAIL`      | The sender's address format is invalid.                                           |
+| `400` | `SENDER_REQUIRED_FOR_DOMAIN`| You sent `domain` without `sender`. They go together.                             |
+| `400` | `DOMAIN_REQUIRED_FOR_SENDER`| You sent `sender` without `domain`. They go together.                             |
+| `400` | `SENDER_DOMAIN_MISMATCH`    | The sender's address doesn't end in the domain you're registering.                |
+| `401` | —                           | Missing or invalid partner key.                                                   |
+| `404` | `NOT_FOUND`                 | The project doesn't exist in your organization. A malformed `projectId` and another partner's client look the same. |
+| `404` | `DOMAIN_NOT_FOUND`          | The domain doesn't exist in that project.                                         |
+| `409` | `MAX_PROJECTS_REACHED`      | You hit your quota. Carries `max_projects` and `active_projects` in the body.     |
+| `409` | `PROJECT_DISABLED`          | The `external_key` on creation belongs to a disabled client. Carries `project_id`. |
+| `409` | `DOMAIN_SENDER_CONFLICT`    | The domain is already tied to another verified sender.                            |
+| `422` | `DOMAIN_NOT_VERIFIED`       | The sender requires a verified domain. Carries `domain` and `verification_status`. |
+| `500` | `NO_OWNER`                  | Your partner organization has no owner.                                           |
+| `500` | `CREATE_FAILED`             | Internal error creating the project.                                              |
+
+<Note>
+  **`PROJECT_DISABLED` only shows up on creation**, when you reuse the `external_key` of a disabled client. It carries the `project_id` so you know which one to call `/reactivate` on. A `PATCH` on a disabled client **does work**, on purpose: that way you can fix its webhook before bringing it back.
+</Note>
+
+---
+
+## Next
+
+- [Partner quickstart](/en/guides/partner-quickstart) — the two integration models and when each one fits.
+- [Domains](/en/api-reference/domains) — the same management with the client's API key.
+- [Webhooks](/en/api-reference/webhooks) — `domain.verified`, `sender.verified` and email events.
+- [Public API](/en/api-reference/public-api) — sending with the client's key.

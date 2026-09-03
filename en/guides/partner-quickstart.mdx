@@ -1,66 +1,86 @@
 ---
 title: Partner quickstart
-description: "Integrate RQE as the platform for your own customers: the model, how to set it up, and how to keep an eye on each customer."
+description: "Integrate RQE as the platform for your own customers: onboard a whole customer in one call and run their domain, sender and API key with your partner key."
 ---
 
 This guide is for **partners**: integrators offering email to **their own customers** with RQE underneath (reseller pattern).
 
-**The model is: one customer, one project.** You create a project per customer with your partner key and get back their API key to operate it. Each customer is genuinely isolated — their data, their domains, their limits and their stats.
+**The model is: one customer, one project.** You create a project per customer with your partner key, configure it entirely with that same key (domain, sender, webhook) and get back their API key to operate it. Each customer is genuinely isolated — their data, their domains, their limits and their stats.
 
 ## Start here
 
+The whole onboarding fits in **one call with your partner key**: the project, its sending domain with the complete DNS pack, and its sender. You don't need the customer's API key to configure them.
+
+<Info>
+  **Compatibility: if you already integrated the previous flow, you don't need to change anything.** `POST /v1/partner/projects` with just `{ "name": "..." }` is still valid and returns the same response as always; `domain` and `sender` are new, optional fields. The `/domains/*` endpoints called with the customer's API key didn't change either.
+</Info>
+
 <Steps>
-  <Step title="Create the customer's project">
-    With your **partner key** (`sk_partner_...`, issued by RQE when your partner account is enabled), you create one project per customer and receive their `api_key`.
+  <Step title="Create the whole customer">
+    With your **partner key** (`sk_partner_...`, issued by RQE when your partner account is enabled):
 
     ```bash
     curl -X POST https://api.reallyquickemails.com/v1/partner/projects \
       -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
       -H "Content-Type: application/json" \
-      -d '{ "name": "Customer", "external_key": "your-internal-id" }'
+      -d '{
+        "name": "Customer",
+        "external_key": "your-internal-id",
+        "domain": "customer.com",
+        "sender": { "name": "Customer", "email": "hello@customer.com" },
+        "webhook_url": "https://yourapp.com/hooks/rqe"
+      }'
     ```
 
     ```json
-    { "project_id": "…", "slug": "customer", "api_key": "sk_proj_…" }
+    {
+      "project_id": "…",
+      "slug": "customer",
+      "api_key": "sk_proj_…",
+      "domain": {
+        "domain": "customer.com",
+        "identity_id": "…",
+        "verification_status": "pending",
+        "can_send": false,
+        "verification_url": "https://app.reallyquickemails.com/verificar-dominio/…",
+        "reply_domain": { "domain": "reply.customer.com", "status": "pending" },
+        "tracking_domain": { "domain": "links.customer.com", "status": "pending" },
+        "records": [ "…11 records: verification, 3 DKIM, SPF, DMARC, return path, tracking and reply…" ]
+      },
+      "sender": { "id": "…", "from_email": "hello@customer.com", "sender_source": "manual", "domain_authenticated": false }
+    }
     ```
 
-    Store the `api_key` securely. The `external_key` makes the call **idempotent**: retrying returns the same project instead of duplicating it.
+    Store the `api_key` securely: it's returned only once. The `external_key` makes the call **idempotent** — retrying it returns the same project instead of duplicating it.
+
+    **`domain` and `sender` go together.** SES won't register a domain without a `From` address, so sending one without the other returns `400` before anything is created. Every DNS record carries an `fqdn`, the ready-to-publish name; that's the one the customer copies.
+
+    Full reference in [Partner / Provisioning](/en/api-reference/partner).
   </Step>
 
-  <Step title="Register their domain">
-    With the customer's `api_key`, register their domain and get back the DNS records they need to publish.
+  <Step title="Forward the verification link">
+    `domain.verification_url` is a **public page** with the customer's DNS records, copy buttons and a verify button. Your end customer opens it without an RQE account: it's the only thing you have to send them.
 
-    ```bash
-    curl -X POST https://api.reallyquickemails.com/domains/register \
-      -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
-      -H "Content-Type: application/json" \
-      -d '{ "domain": "customer.com" }'
-    ```
-
-    To let them publish in one click, use [Domain Connect](/en/api-reference/domains): `GET /domains/customer.com/domain-connect` returns a signed URL that creates the records at their provider.
+    If their DNS provider supports [Domain Connect](/en/api-reference/domains), publishing is one click from that same page.
 
     <Note>
-      This is where most integrations stall: the end customer has to touch their DNS. The one-click link is what helps most.
+      This is the step where most integrations stall: the end customer has to touch their DNS. The public link is what helps most — don't ask them to copy records out of an email from you.
     </Note>
   </Step>
 
-  <Step title="Register their reply domain (optional)">
-    So replies land at `name@reply.customer.com` instead of a token-encoded address:
+  <Step title="Wait for verification">
+    When the customer publishes DNS, you get the **`domain.verified`** webhook — no polling needed. See [Webhooks](/en/api-reference/webhooks).
+
+    To force the check when they tell you "it's configured":
 
     ```bash
-    curl -X POST https://api.reallyquickemails.com/domains/reply \
-      -H "Authorization: Bearer sk_proj_xxxxxxxxxxxx" \
-      -H "Content-Type: application/json" \
-      -d '{ "domain": "customer.com" }'
+    curl -X POST https://api.reallyquickemails.com/v1/partner/projects/{project_id}/domains/customer.com/verify \
+      -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx"
     ```
   </Step>
 
-  <Step title="Wait for verification">
-    Once the customer publishes the DNS, you get the **`domain.verified`** webhook — no polling needed. See [Webhooks](/en/api-reference/webhooks).
-  </Step>
-
   <Step title="Send and measure">
-    With the same `api_key`, [send](/en/api-reference/public-api) transactional or batch email. To see how each customer is doing:
+    With the customer's `api_key`, [send](/en/api-reference/public-api) transactional or bulk. To see how each one is doing:
 
     ```bash
     curl https://api.reallyquickemails.com/v1/partner/projects/{project_id}/stats \
@@ -70,6 +90,45 @@ This guide is for **partners**: integrators offering email to **their own custom
     And `GET /v1/partner/projects` lists your whole portfolio.
   </Step>
 </Steps>
+
+### Configure a customer that already exists
+
+Everything the full onboarding does can be done later, piece by piece, always with the partner key:
+
+| I want to…                     | Endpoint                                              |
+| ------------------------------ | ----------------------------------------------------- |
+| Register their domain          | `POST /v1/partner/projects/{id}/domains` (with `sender`) |
+| See record-by-record status    | `GET /v1/partner/projects/{id}/domains/{domain}`      |
+| Create a sender                | `POST /v1/partner/projects/{id}/senders`              |
+| Change name or webhook         | `PATCH /v1/partner/projects/{id}`                     |
+| Rotate their API key           | `POST /v1/partner/projects/{id}/api-key/rotate`       |
+| Reactivate a disabled one      | `POST /v1/partner/projects/{id}/reactivate`           |
+| Check your client quota        | `GET /v1/partner/whoami` → `partner.max_projects`     |
+
+Domain registration **never overwrites what already works**. If the domain was already registered, the call is idempotent and touches nothing else about the customer. And even for a new domain, it won't register reply if the customer already has a verified one, nor tracking if one is already configured: registering a reply domain rewrites its status to `pending`, which would switch off branded replies for a customer already running them.
+
+Whatever was skipped comes back in the response's `skipped[]` array, with its `step` and `reason_code`. See [Skipped steps](/en/api-reference/partner#skipped-steps).
+
+### If your customer doesn't control their DNS
+
+There is a way out: verify just the mailbox, by email (magic link). You have to ask for it explicitly:
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/partner/projects/{project_id}/senders \
+  -H "Authorization: Bearer sk_partner_xxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Customer", "email": "hello@gmail.com", "allow_unauthenticated": true }'
+```
+
+Without the flag, the API answers `422 DOMAIN_NOT_VERIFIED`. That's on purpose.
+
+That requirement belongs **only to the new endpoint** `POST /v1/partner/projects/{id}/senders`. If you verify senders today with [`POST /domains/verify-email`](/en/api-reference/domains#post-domainsverify-email) and the customer's API key, that path keeps working the same, with no flag and no such error.
+
+<Warning>
+  **The magic link is not for volume.** It verifies the mailbox, not the domain: mail goes out signed with the platform's shared domain, so Microsoft rejects with `5.7.515` on DMARC fail and Gmail answers `550-5.7.1 "likely unsolicited mail"`. It also unlocks neither reply domain nor tracking domain.
+
+  None of this shows up as an error in your integration: the API returns `200` and the problem surfaces weeks later in the bounce rate.
+</Warning>
 
 ## Check your customers' health
 
@@ -103,6 +162,8 @@ curl "https://api.reallyquickemails.com/domains/health" \
 </Warning>
 
 See [Domains](/en/api-reference/domains) for the full response.
+
+With the partner key you get the same per customer, without their API key: `GET /v1/partner/projects/{id}` returns a `health` block with `status`, `can_send`, `hard_bounce_rate` and `issues`. It's the call you build your customer panel on.
 
 <Warning>
   **Watch `hard_bounce_rate`, not the total bounce count.** Providers calculate the suspension threshold (~5%) on **permanent** bounces; transient ones don't count. A domain can show 12% total bounces while staying below 1% hard bounce.
@@ -156,4 +217,4 @@ See [MCP · partner mode](/en/guides/mcp#partner-mode-manage-your-client-portfol
 - [Activity](/en/api-reference/activity) — `?sender_domain=` and `/v1/domain-stats`.
 - [Public API](/en/api-reference/public-api) — sending.
 - [Webhooks](/en/api-reference/webhooks) — `domain.verified` and email events.
-- [Partner / Provisioning](/en/api-reference/partner) — `/v1/partner/projects`.
+- [Partner / Provisioning](/en/api-reference/partner) — full reference for `/v1/partner/*`: onboarding, domains, senders, API key and error codes.
