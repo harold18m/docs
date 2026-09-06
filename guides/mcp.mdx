@@ -264,9 +264,10 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 | Herramienta | Qué hace |
 |---|---|
 | `send_email` | **Envía un correo real de inmediato** (hasta 50 destinatarios), desde un remitente verificado del proyecto. Soporta `idempotency_key`: la misma clave dentro de 24 h devuelve el resultado anterior en vez de enviar de nuevo |
+| `send_campaign` | **Lanza una campaña en borrador** a toda su audiencia, en dos pasos: la primera llamada no envía nada y devuelve un resumen (asunto, remitente, plantilla y cuántos contactos recibirán el correo, o qué falta por completar); solo con `confirm: true`, después de que apruebes ese resumen, la envía por el mismo camino que la app |
 
 <Warning>
-  `send_email` no es un borrador y no se puede deshacer. Concede `sends:execute` solo a claves cuyo asistente deba enviar por ti, y revócala si dejas de necesitarlo.
+  `send_email` y `send_campaign` (con `confirm: true`) envían correo real y no se pueden deshacer. Concede `sends:execute` solo a claves cuyo asistente deba enviar por ti, y revócala si dejas de necesitarlo.
 </Warning>
 
 </Accordion>
@@ -321,7 +322,7 @@ Tu API Key (`sk_...`) da acceso completo a la API, incluido el envío de correo,
 </Accordion>
 
 <Accordion title="¿El asistente puede enviar correos o borrar datos?">
-Puede enviar correo **solo** si le concediste `sends:execute` — sin ese permiso, ni siquiera ve la herramienta de envío. Las campañas que crea nacen siempre en borrador y las envías tú desde la app. No borra contactos ni datos: no existen herramientas de borrado. Cada capacidad es un permiso separado que concedes explícitamente al crear la clave.
+Puede enviar correo **solo** si le concediste `sends:execute` — sin ese permiso, ni siquiera ve la herramienta de envío. Las campañas que crea nacen siempre en borrador; las envías tú desde la app o, si concediste `sends:execute`, con `send_campaign`, que primero te muestra el resumen y espera tu aprobación. No borra contactos ni datos: no existen herramientas de borrado. Cada capacidad es un permiso separado que concedes explícitamente al crear la clave.
 </Accordion>
 
 <Accordion title="¿Puede crear automatizaciones (flujos) completas?">

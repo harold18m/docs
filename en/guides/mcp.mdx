@@ -265,9 +265,10 @@ These modify real data. None of them send email directly, but the ones marked ca
 | Tool | What it does |
 |---|---|
 | `send_email` | **Sends a real email immediately** (up to 50 recipients), from a verified sender of the project. Supports `idempotency_key`: the same key within 24h returns the previous result instead of sending again |
+| `send_campaign` | **Launches a draft campaign** to its whole audience, in two steps: the first call sends nothing and returns a summary (subject, sender, template and exactly how many contacts will get the email, or what is still missing); only with `confirm: true`, after you approve that summary, does it send through the same path as the app |
 
 <Warning>
-  `send_email` is not a draft and cannot be undone. Grant `sends:execute` only to keys whose assistant should send on your behalf, and revoke it when no longer needed.
+  `send_email` and `send_campaign` (with `confirm: true`) send real email and cannot be undone. Grant `sends:execute` only to keys whose assistant should send on your behalf, and revoke it when no longer needed.
 </Warning>
 
 </Accordion>
@@ -322,7 +323,7 @@ Your API Key (`sk_...`) gives full access to the API, including sending email, a
 </Accordion>
 
 <Accordion title="Can the assistant send email or delete data?">
-It can send email **only** if you granted `sends:execute` — without that permission it does not even see the send tool. Campaigns it creates are always drafts, and you send them from the app. It does not delete contacts or data: there are no delete tools. Each capability is a separate permission you grant explicitly when creating the key.
+It can send email **only** if you granted `sends:execute` — without that permission it does not even see the send tool. Campaigns it creates are always drafts; you send them from the app or, if you granted `sends:execute`, with `send_campaign`, which first shows you the summary and waits for your approval. It does not delete contacts or data: there are no delete tools. Each capability is a separate permission you grant explicitly when creating the key.
 </Accordion>
 
 <Accordion title="Can it build complete automations (flows)?">
