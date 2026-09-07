@@ -64,8 +64,8 @@ Each object in the `attachments` array has the following structure:
 **Limits:**
 
 - Maximum **10 attachments** per email.
-- Maximum **10 MB** per individual attachment.
-- Maximum **10 MB** total per email (sending-infrastructure limit).
+- Maximum **25 MB** per individual attachment.
+- Maximum **25 MB** total per email (sending-infrastructure limit).
 
 Attachments are processed in the background: if one exceeds the limits or its URL is not accessible, the send fails asynchronously and is recorded in the activity record.
 
