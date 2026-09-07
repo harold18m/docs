@@ -153,6 +153,10 @@ Ask your assistant something simple, for example:
 
 It will call the `whoami` tool and answer with your project name and the key's permissions. If you see an authorization error instead, check that you copied the full key and that it is not revoked.
 
+<Tip>
+  To see everything your assistant can do with this key — including what it's missing and how to enable it — ask it to call `get_capabilities` (see [Capabilities and guided workflows](#capabilities-and-guided-workflows)).
+</Tip>
+
 </Step>
 
 </Steps>
@@ -168,15 +172,15 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 | `contacts:read` | Contacts, their activity, events, senders, domains and the suppression list |
 | `contacts:write` | Create/update contacts, tags, attributes, events and suppression |
 | `campaigns:read` | Campaigns and their metric reports |
-| `campaigns:write` | Create campaigns **as drafts** (never sends them) |
+| `campaigns:write` | Create campaigns **as drafts** (never sends them) and cancel one that is sending or scheduled |
 | `reports:read` | Aggregated project metrics over a date range |
 | `segments:read` | Segments and their rules |
 | `segments:write` | Create segments |
 | `templates:read` | Templates (metadata, not the email body) |
-| `templates:write` | Create email templates from HTML |
+| `templates:write` | Create and edit email templates from HTML |
 | `automations:read` | Automations and their reports |
-| `automations:write` | Enroll contacts into active automations |
-| `sends:execute` | **Send real email.** The most sensitive permission — grant it only if you want the assistant to send on your behalf |
+| `automations:write` | Enroll contacts into active automations, and pause/resume one |
+| `sends:execute` | **Send real email** (test copies included). The most sensitive permission — grant it only if you want the assistant to send on your behalf |
 
 <Tip>
   Start with the minimum. If you only want the assistant to analyze campaign performance, `campaigns:read` and `reports:read` are enough. Grant write permissions (`:write`) only if you want the assistant to modify your data.
@@ -188,7 +192,36 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 
 ---
 
+## Capabilities and guided workflows
+
+Any valid key can call `get_capabilities` (no permission needed, just like `whoami`) and gets the server's full catalog back: every tool that exists — marking which ones are `available` for your key and, if not, how to enable them —, what each permission grants, the hard limits of the API (pagination, `send_email` max recipients, idempotency window), and a set of guided, step-by-step **workflows** for the jobs people actually ask for.
+
+The same workflows are registered as **MCP prompts** (`prompts/list`, `prompts/get`): a client that supports them can offer them directly, without going through a tool.
+
+| Workflow | What it guides |
+|---|---|
+| `launch_email_campaign` | Design, test and launch a campaign to an existing audience, with human approval before it sends |
+| `import_design_and_send` | Turn an already-designed HTML email into a sent campaign |
+| `set_up_domain` | Authenticate a sending domain so campaigns land in the inbox |
+| `improve_deliverability` | Diagnose why delivery, opens or clicks are low, and fix what can be fixed from chat |
+| `automate` | Audit an automation, enroll a contact into it, or troubleshoot why it didn't fire |
+| `report_issue` | Escalate a broken flow to a human with the context needed to act on it |
+
+<Tip>
+  For a task you don't know well, have your assistant call `get_capabilities` before `whoami` — it's cheaper than discovering a limit by trial and error.
+</Tip>
+
+---
+
 ## Available tools
+
+<Info>
+  Every **write** tool accepts `idempotency_key` (optional, in the body or the `Idempotency-Key` header): the same key with the same body, within **24 hours**, replays the original result instead of acting again. The same key with a different body responds `409 IDEMPOTENCY_CONFLICT` — a fresh UUID per real action is enough.
+</Info>
+
+<Info>
+  Write results and single-entity reads (a campaign, template, segment or automation) include `view_in_app`: the direct link to that screen in the app.
+</Info>
 
 <AccordionGroup>
 
@@ -242,7 +275,7 @@ To answer "why didn't my flow trigger?" without waiting for support.
 
 </Accordion>
 
-<Accordion title="Writing — contacts:write / segments:write / campaigns:write / automations:write">
+<Accordion title="Writing — contacts:write / segments:write / templates:write / campaigns:write / automations:write">
 
 These modify real data. None of them send email directly, but the ones marked can trigger active automations that do send.
 
@@ -255,8 +288,14 @@ These modify real data. None of them send email directly, but the ones marked ca
 | `suppress_email` | `contacts:write` | Adds addresses to the suppression list (they stop receiving email) |
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
 | `create_template` | `templates:write` | Creates an email template from HTML and returns the link to open it in the editor. Images must be public URLs |
+| `update_template` | `templates:write` | Edits an existing template in place, keeping its id — any campaign already using it goes out with the new content. HTML, subject and/or name can be changed |
+| `generate_template` | `templates:write` | The design engine writes a complete email from a brief, using the project's brand identity, and saves it as a template. Takes 30-90 seconds and counts against the project's daily AI limit |
+| `edit_template_with_ai` | `templates:write` | Rewrites an existing template following a plain-language instruction, keeping its id. Only for templates with an editable design (ones imported as raw HTML use `update_template`) |
 | `create_campaign` | `campaigns:write` | Creates a campaign **always as a draft** — you review, complete and send it from the app |
+| `cancel_campaign` | `campaigns:write` | Stops a campaign that is sending or scheduled before it finishes. Never sends anything — it only halts |
 | `enroll_in_automation` | `automations:write` | Enrolls a contact into an **active** automation — the flow runs immediately and may email them |
+| `pause_automation` | `automations:write` | Pauses an active automation: it stops enrolling new contacts; runs already in progress finish their remaining steps |
+| `resume_automation` | `automations:write` | Resumes a paused automation |
 
 </Accordion>
 
@@ -264,24 +303,66 @@ These modify real data. None of them send email directly, but the ones marked ca
 
 | Tool | What it does |
 |---|---|
-| `send_email` | **Sends a real email immediately** (up to 50 recipients), from a verified sender of the project. Supports `idempotency_key`: the same key within 24h returns the previous result instead of sending again |
-| `send_campaign` | **Launches a draft campaign** to its whole audience, in two steps: the first call sends nothing and returns a summary (subject, sender, template and exactly how many contacts will get the email, or what is still missing); only with `confirm: true`, after you approve that summary, does it send through the same path as the app |
+| `send_email` | **Sends a real email immediately** (up to 50 recipients), from a verified sender of the project |
+| `send_campaign_test` | **Sends one real test copy** of a campaign to a single address — the same subject, template and sender the real send will use, none of the audience or metrics effects of a launch. Recommended before `send_campaign` |
+| `send_campaign` | **Launches a draft campaign** to its whole audience, now or at a future time, in two steps: the first call sends nothing and returns a summary (subject, sender, template and exactly how many contacts will get the email, or what is still missing); only with `confirm: true`, after you approve that summary, does it send through the same path as the app. With `scheduled_at` (ISO 8601, up to 90 days out) it schedules the send instead of launching right away — stop it with `cancel_campaign` before it fires |
+
+All three support `idempotency_key`: the same key within 24h returns the previous result instead of sending again.
 
 <Warning>
-  `send_email` and `send_campaign` (with `confirm: true`) send real email and cannot be undone. Grant `sends:execute` only to keys whose assistant should send on your behalf, and revoke it when no longer needed.
+  `send_email`, `send_campaign_test` and `send_campaign` (with `confirm: true`) send real email and cannot be undone once delivered. A campaign scheduled with `scheduled_at` CAN be stopped with `cancel_campaign` before it fires. Grant `sends:execute` only to keys whose assistant should send on your behalf, and revoke it when no longer needed.
 </Warning>
 
 </Accordion>
 
-<Accordion title="Identity — no permission">
+<Accordion title="Identity and utilities — no permission">
 
 | Tool | What it does |
 |---|---|
 | `whoami` | The project the key belongs to and its permissions. Any valid key can call it |
+| `get_capabilities` | The server's full catalog: tools, permissions, limits and guided workflows |
+| `get_usage` | The project's sending quota: plan, limit, used, remaining, and whether sending is currently blocked (and why) |
+| `send_flare` | Escalates a broken flow to a human: the user's goal, what happened, and the chain of calls that led there. Returns a `flare_id` |
 
 </Accordion>
 
 </AccordionGroup>
+
+---
+
+## Errors
+
+Every non-2xx response has the same shape:
+
+```json
+{
+  "code": "CAMPAIGN_INCOMPLETE",
+  "error": "Campaign is not ready for a test send. Missing: template_id.",
+  "suggestion": "Fix everything listed in `missing` and call send_campaign_test again.",
+  "request_id": "3f2a1c9e-7b44-4e21-9a2f-6c1d0a8b5e77"
+}
+```
+
+- **`code`** is stable: it decides the next step without parsing prose.
+- **`suggestion`** is the concrete fix — your assistant can act on it in the same turn without you stepping in.
+- **`request_id`** identifies that call and also travels in the `X-Request-Id` header of every response, success or error. Share it if you need support.
+
+| Code | When it shows up |
+|---|---|
+| `INVALID_INPUT` | A field failed validation — check `suggestion` (and `param`, if present) for which one |
+| `NOT_FOUND` | The id does not exist in your project |
+| `FORBIDDEN` | The key is missing the permission that tool needs |
+| `UNAUTHORIZED` | The key is invalid or was revoked |
+| `RATE_LIMITED` | Too many calls in a row — retry in a few seconds |
+| `QUOTA_EXCEEDED` | The project hit its plan limit for the period — check `get_usage` |
+| `IDEMPOTENCY_CONFLICT` | The same `idempotency_key` was already used with a different body |
+| `CONFLICT` | The resource is not in a state that allows the operation |
+| `CAMPAIGN_NOT_CANCELLABLE` | The campaign can no longer be stopped (for example, it already finished sending) |
+| `CAMPAIGN_INCOMPLETE` | Something is missing (template, sender, subject) to send or test the campaign |
+| `AUTOMATION_STATE` | The automation is already in the requested state (pausing one already paused, and vice versa) |
+| `PROJECT_DISABLED` | The project cannot operate right now — contact support |
+| `AI_QUOTA_EXCEEDED` | The project used all of its AI generations for today (resets at 00:00 UTC) — write the HTML with `create_template` or `update_template`, or retry tomorrow |
+| `INTERNAL_ERROR` | Something failed on our side — retry, and if it persists report it with `send_flare` including the `request_id` |
 
 ---
 
@@ -323,11 +404,15 @@ Your API Key (`sk_...`) gives full access to the API, including sending email, a
 </Accordion>
 
 <Accordion title="Can the assistant send email or delete data?">
-It can send email **only** if you granted `sends:execute` — without that permission it does not even see the send tool. Campaigns it creates are always drafts; you send them from the app or, if you granted `sends:execute`, with `send_campaign`, which first shows you the summary and waits for your approval. It does not delete contacts or data: there are no delete tools. Each capability is a separate permission you grant explicitly when creating the key.
+It can send email **only** if you granted `sends:execute` — without that permission it does not even see the sending tools. Campaigns it creates are always drafts; you send them from the app or, if you granted `sends:execute`, with `send_campaign` (which first shows you the summary, can be scheduled with `scheduled_at`, and waits for your approval) — `send_campaign_test` sends a test copy before launching, and `cancel_campaign` stops one that is already sending or scheduled. It does not delete contacts or data: there are no delete tools. Each capability is a separate permission you grant explicitly when creating the key.
 </Accordion>
 
 <Accordion title="Can it build complete automations (flows)?">
-Not yet — that is **coming soon**. Today it can enroll contacts into automations you already built (with `automations:write`) and check their performance, but designing the flow itself (nodes, triggers, conditions) happens in the app.
+Not yet — that is **coming soon**. Today it can enroll contacts into automations you already built (with `automations:write`), pause and resume them, and check their performance, but designing the flow itself (nodes, triggers, conditions) happens in the app.
+</Accordion>
+
+<Accordion title="What if my assistant gets stuck or something doesn't work?">
+It can call `send_flare` (no permission needed, any key) to report it with full context: what you were trying to do, what happened, and the chain of calls that led there. It returns a `flare_id` — hand that to support if you need follow-up.
 </Accordion>
 
 <Accordion title="Can I have multiple keys?">

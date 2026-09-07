@@ -152,6 +152,10 @@ Pídele a tu asistente algo simple, por ejemplo:
 
 Llamará a la herramienta `whoami` y responderá con el nombre de tu proyecto y los permisos de la clave. Si en cambio ves un error de autorización, revisa que copiaste la clave completa y que no está revocada.
 
+<Tip>
+  Para que veas todo lo que tu asistente puede hacer con esta clave —incluido lo que le falta y cómo habilitarlo— pídele que llame a `get_capabilities` (ver [Capacidades y workflows guiados](#capacidades-y-workflows-guiados)).
+</Tip>
+
 </Step>
 
 </Steps>
@@ -167,15 +171,15 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 | `contacts:read` | Contactos, su actividad, eventos, remitentes, dominios y lista de supresión |
 | `contacts:write` | Crear/actualizar contactos, tags, atributos, eventos y supresión |
 | `campaigns:read` | Campañas y sus reportes de métricas |
-| `campaigns:write` | Crear campañas **en borrador** (nunca las envía) |
+| `campaigns:write` | Crear campañas **en borrador** (nunca las envía) y cancelar una que esté en curso o programada |
 | `reports:read` | Métricas agregadas del proyecto en un rango de fechas |
 | `segments:read` | Segmentos y sus reglas |
 | `segments:write` | Crear segmentos |
 | `templates:read` | Plantillas (metadatos, no el cuerpo del email) |
-| `templates:write` | Crear plantillas de email desde HTML |
+| `templates:write` | Crear y editar plantillas de email desde HTML |
 | `automations:read` | Automatizaciones y sus reportes |
-| `automations:write` | Inscribir contactos en automatizaciones activas |
-| `sends:execute` | **Enviar correo real.** El permiso más sensible — concédelo solo si quieres que el asistente envíe por ti |
+| `automations:write` | Inscribir contactos en automatizaciones activas, y pausarlas/reanudarlas |
+| `sends:execute` | **Enviar correo real** (incluye copias de prueba). El permiso más sensible — concédelo solo si quieres que el asistente envíe por ti |
 
 <Tip>
   Empieza con el mínimo. Si solo quieres que el asistente analice el desempeño de tus campañas, `campaigns:read` y `reports:read` bastan. Los permisos de escritura (`:write`) concédelos solo si quieres que el asistente modifique tus datos.
@@ -187,7 +191,36 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 
 ---
 
+## Capacidades y workflows guiados
+
+Cualquier clave válida puede llamar a `get_capabilities` (sin permiso, igual que `whoami`) y recibe el catálogo completo del servidor: todas las tools que existen —marcando cuáles están `available` para tu clave y, si no, cómo habilitarlas—, qué habilita cada permiso, los límites duros de la API (paginación, destinatarios máximos de `send_email`, ventana de idempotencia) y una serie de **workflows** guiados paso a paso para las tareas que de verdad se piden.
+
+Los mismos workflows están registrados como **prompts MCP** (`prompts/list`, `prompts/get`): un cliente que los soporta los ofrece directo, sin pasar por una tool.
+
+| Workflow | Qué guía |
+|---|---|
+| `launch_email_campaign` | Diseñar, probar y lanzar una campaña a una audiencia existente, con aprobación humana antes del envío |
+| `import_design_and_send` | Convertir un HTML ya diseñado en una campaña enviada |
+| `set_up_domain` | Autenticar un dominio de envío para que las campañas lleguen a la bandeja de entrada |
+| `improve_deliverability` | Diagnosticar por qué la entrega, las aperturas o los clics están bajos, y arreglar lo que se puede desde el chat |
+| `automate` | Auditar una automatización, inscribir un contacto en ella, o resolver por qué no disparó |
+| `report_issue` | Escalar un flujo roto a un humano con el contexto necesario para actuar |
+
+<Tip>
+  Ante una tarea que no conoces bien, pide a tu asistente que llame a `get_capabilities` antes que `whoami` — sale más barato que descubrir un límite por prueba y error.
+</Tip>
+
+---
+
 ## Herramientas disponibles
+
+<Info>
+  Todas las herramientas de **escritura** aceptan `idempotency_key` (opcional, en el body o en el header `Idempotency-Key`): la misma clave con el mismo cuerpo, dentro de **24 horas**, repite la respuesta original sin ejecutar nada de nuevo. La misma clave con un cuerpo distinto responde `409 IDEMPOTENCY_CONFLICT` — un UUID nuevo por cada acción real basta.
+</Info>
+
+<Info>
+  Los resultados de escritura y las lecturas de una entidad puntual (una campaña, plantilla, segmento o automatización) incluyen `view_in_app`: el link directo a esa pantalla en la app.
+</Info>
 
 <AccordionGroup>
 
@@ -241,7 +274,7 @@ Para responder "¿por qué no disparó mi flujo?" sin esperar a soporte.
 
 </Accordion>
 
-<Accordion title="Escritura — contacts:write / segments:write / campaigns:write / automations:write">
+<Accordion title="Escritura — contacts:write / segments:write / templates:write / campaigns:write / automations:write">
 
 Modifican datos reales. Ninguna de estas envía correo directamente, pero las marcadas pueden disparar automatizaciones activas que sí envíen.
 
@@ -254,8 +287,14 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 | `suppress_email` | `contacts:write` | Agrega direcciones a la lista de supresión (dejan de recibir correo) |
 | `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
 | `create_template` | `templates:write` | Crea una plantilla de email desde HTML y devuelve el link para abrirla en el editor. Las imágenes deben ser URLs públicas |
+| `update_template` | `templates:write` | Edita una plantilla existente conservando su id — cualquier campaña que ya la use sale con el contenido nuevo. Se puede cambiar HTML, asunto y/o nombre |
+| `generate_template` | `templates:write` | El motor de diseño escribe un email completo a partir de un brief, con la identidad de marca del proyecto, y lo guarda como plantilla. Tarda entre 30 y 90 segundos y consume el tope diario de IA del proyecto |
+| `edit_template_with_ai` | `templates:write` | Reescribe una plantilla existente siguiendo una instrucción en lenguaje natural, conservando su id. Solo para plantillas con diseño editable (las importadas como HTML crudo usan `update_template`) |
 | `create_campaign` | `campaigns:write` | Crea una campaña **siempre en borrador** — tú la revisas, completas y envías desde la app |
+| `cancel_campaign` | `campaigns:write` | Frena una campaña en curso o programada antes de que termine de enviar. No dispara nada — solo detiene |
 | `enroll_in_automation` | `automations:write` | Inscribe un contacto en una automatización **activa** — el flujo corre de inmediato y puede enviarle correo |
+| `pause_automation` | `automations:write` | Pausa una automatización activa: deja de inscribir contactos nuevos; las corridas ya en curso terminan sus pasos |
+| `resume_automation` | `automations:write` | Reactiva una automatización pausada |
 
 </Accordion>
 
@@ -263,24 +302,66 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 
 | Herramienta | Qué hace |
 |---|---|
-| `send_email` | **Envía un correo real de inmediato** (hasta 50 destinatarios), desde un remitente verificado del proyecto. Soporta `idempotency_key`: la misma clave dentro de 24 h devuelve el resultado anterior en vez de enviar de nuevo |
-| `send_campaign` | **Lanza una campaña en borrador** a toda su audiencia, en dos pasos: la primera llamada no envía nada y devuelve un resumen (asunto, remitente, plantilla y cuántos contactos recibirán el correo, o qué falta por completar); solo con `confirm: true`, después de que apruebes ese resumen, la envía por el mismo camino que la app |
+| `send_email` | **Envía un correo real de inmediato** (hasta 50 destinatarios), desde un remitente verificado del proyecto |
+| `send_campaign_test` | **Envía una copia de prueba real** de una campaña a una sola dirección — mismo asunto, plantilla y remitente que usará el envío real, sin contar en la audiencia ni en las métricas de la campaña. Recomendado antes de `send_campaign` |
+| `send_campaign` | **Lanza una campaña en borrador** a toda su audiencia, ahora o en una fecha futura, en dos pasos: la primera llamada no envía nada y devuelve un resumen (asunto, remitente, plantilla y cuántos contactos recibirán el correo, o qué falta por completar); solo con `confirm: true`, después de que apruebes ese resumen, la envía por el mismo camino que la app. Con `scheduled_at` (ISO 8601, hasta 90 días a futuro) programa el envío en vez de lanzarlo ya — se puede frenar con `cancel_campaign` mientras no haya llegado la hora |
+
+Todas soportan `idempotency_key`: la misma clave dentro de 24 h devuelve el resultado anterior en vez de enviar de nuevo.
 
 <Warning>
-  `send_email` y `send_campaign` (con `confirm: true`) envían correo real y no se pueden deshacer. Concede `sends:execute` solo a claves cuyo asistente deba enviar por ti, y revócala si dejas de necesitarlo.
+  `send_email`, `send_campaign_test` y `send_campaign` (con `confirm: true`) envían correo real y no se pueden deshacer una vez entregado. Una campaña programada con `scheduled_at` sí se puede frenar con `cancel_campaign` mientras no llegue su hora. Concede `sends:execute` solo a claves cuyo asistente deba enviar por ti, y revócala si dejas de necesitarlo.
 </Warning>
 
 </Accordion>
 
-<Accordion title="Identidad — sin permiso">
+<Accordion title="Identidad y utilidades — sin permiso">
 
 | Herramienta | Qué hace |
 |---|---|
 | `whoami` | El proyecto al que pertenece la clave y sus permisos. Cualquier clave válida puede llamarla |
+| `get_capabilities` | El catálogo completo del servidor: tools, permisos, límites y workflows guiados |
+| `get_usage` | El cupo de envío del proyecto: plan, límite, usado, restante y si el envío está bloqueado (y por qué) |
+| `send_flare` | Reporta un flujo roto a un humano: el objetivo del usuario, qué pasó y la cadena de llamadas que llevó ahí. Devuelve un `flare_id` |
 
 </Accordion>
 
 </AccordionGroup>
+
+---
+
+## Errores
+
+Toda respuesta que no sea 2xx trae la misma forma:
+
+```json
+{
+  "code": "CAMPAIGN_INCOMPLETE",
+  "error": "Campaign is not ready for a test send. Missing: template_id.",
+  "suggestion": "Fix everything listed in `missing` and call send_campaign_test again.",
+  "request_id": "3f2a1c9e-7b44-4e21-9a2f-6c1d0a8b5e77"
+}
+```
+
+- **`code`** es estable: sirve para decidir el siguiente paso sin parsear texto.
+- **`suggestion`** es el remedio concreto (en inglés, como el resto de la superficie MCP) — con eso tu asistente puede resolverlo en la misma vuelta, sin que tengas que intervenir.
+- **`request_id`** identifica esa llamada y viaja también en el header `X-Request-Id` de toda respuesta, éxito o error. Pásalo si necesitas soporte.
+
+| Código | Cuándo aparece |
+|---|---|
+| `INVALID_INPUT` | Un campo no pasa la validación — revisa `suggestion` (y `param`, si viene) para saber cuál |
+| `NOT_FOUND` | El id no existe en tu proyecto |
+| `FORBIDDEN` | La clave no tiene el permiso que esa herramienta necesita |
+| `UNAUTHORIZED` | La clave no es válida o fue revocada |
+| `RATE_LIMITED` | Demasiadas llamadas seguidas — reintenta en unos segundos |
+| `QUOTA_EXCEEDED` | El proyecto llegó al límite de su plan para el período — revisa `get_usage` |
+| `IDEMPOTENCY_CONFLICT` | La misma `idempotency_key` ya se usó con un cuerpo distinto |
+| `CONFLICT` | El recurso no está en un estado que permita la operación |
+| `CAMPAIGN_NOT_CANCELLABLE` | La campaña ya no se puede frenar (por ejemplo, ya terminó de enviar) |
+| `CAMPAIGN_INCOMPLETE` | Falta algo (plantilla, remitente, asunto) para enviar o probar la campaña |
+| `AUTOMATION_STATE` | La automatización ya está en el estado pedido (pausarla si ya está pausada, y viceversa) |
+| `PROJECT_DISABLED` | El proyecto no puede operar ahora mismo — contacta soporte |
+| `AI_QUOTA_EXCEEDED` | El proyecto agotó sus generaciones por IA de hoy (se reinicia a las 00:00 UTC) — escribe el HTML con `create_template` o `update_template`, o reintenta mañana |
+| `INTERNAL_ERROR` | Algo falló de nuestro lado — reintenta, y si persiste repórtalo con `send_flare` incluyendo el `request_id` |
 
 ---
 
@@ -322,11 +403,15 @@ Tu API Key (`sk_...`) da acceso completo a la API, incluido el envío de correo,
 </Accordion>
 
 <Accordion title="¿El asistente puede enviar correos o borrar datos?">
-Puede enviar correo **solo** si le concediste `sends:execute` — sin ese permiso, ni siquiera ve la herramienta de envío. Las campañas que crea nacen siempre en borrador; las envías tú desde la app o, si concediste `sends:execute`, con `send_campaign`, que primero te muestra el resumen y espera tu aprobación. No borra contactos ni datos: no existen herramientas de borrado. Cada capacidad es un permiso separado que concedes explícitamente al crear la clave.
+Puede enviar correo **solo** si le concediste `sends:execute` — sin ese permiso, ni siquiera ve las herramientas de envío. Las campañas que crea nacen siempre en borrador; las envías tú desde la app o, si concediste `sends:execute`, con `send_campaign` (que primero te muestra el resumen, se puede programar con `scheduled_at`, y espera tu aprobación) — `send_campaign_test` manda una copia de prueba antes de lanzarla, y `cancel_campaign` frena una que ya está en curso o programada. No borra contactos ni datos: no existen herramientas de borrado. Cada capacidad es un permiso separado que concedes explícitamente al crear la clave.
 </Accordion>
 
 <Accordion title="¿Puede crear automatizaciones (flujos) completas?">
-Todavía no — llega **próximamente**. Hoy puede inscribir contactos en automatizaciones que ya construiste (con `automations:write`) y consultar su desempeño, pero el diseño del flujo (nodos, triggers, condiciones) se hace desde la app.
+Todavía no — llega **próximamente**. Hoy puede inscribir contactos en automatizaciones que ya construiste (con `automations:write`), pausarlas y reanudarlas, y consultar su desempeño, pero el diseño del flujo (nodos, triggers, condiciones) se hace desde la app.
+</Accordion>
+
+<Accordion title="¿Qué pasa si mi asistente se traba o algo no funciona?">
+Puede llamar a `send_flare` (sin permiso, cualquier clave) para reportarlo con contexto completo: qué querías hacer, qué pasó y la cadena de llamadas que llevó ahí. Te devuelve un `flare_id` — pásaselo a soporte si necesitas seguimiento.
 </Accordion>
 
 <Accordion title="¿Puedo tener varias claves?">
