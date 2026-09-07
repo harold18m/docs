@@ -289,6 +289,8 @@ These modify real data. None of them send email directly, but the ones marked ca
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
 | `create_template` | `templates:write` | Creates an email template from HTML and returns the link to open it in the editor. Images must be public URLs |
 | `update_template` | `templates:write` | Edits an existing template in place, keeping its id — any campaign already using it goes out with the new content. HTML, subject and/or name can be changed |
+| `generate_template` | `templates:write` | The design engine writes a complete email from a brief, using the project's brand identity, and saves it as a template. Takes 30-90 seconds and counts against the project's daily AI limit |
+| `edit_template_with_ai` | `templates:write` | Rewrites an existing template following a plain-language instruction, keeping its id. Only for templates with an editable design (ones imported as raw HTML use `update_template`) |
 | `create_campaign` | `campaigns:write` | Creates a campaign **always as a draft** — you review, complete and send it from the app |
 | `cancel_campaign` | `campaigns:write` | Stops a campaign that is sending or scheduled before it finishes. Never sends anything — it only halts |
 | `enroll_in_automation` | `automations:write` | Enrolls a contact into an **active** automation — the flow runs immediately and may email them |
@@ -359,6 +361,7 @@ Every non-2xx response has the same shape:
 | `CAMPAIGN_INCOMPLETE` | Something is missing (template, sender, subject) to send or test the campaign |
 | `AUTOMATION_STATE` | The automation is already in the requested state (pausing one already paused, and vice versa) |
 | `PROJECT_DISABLED` | The project cannot operate right now — contact support |
+| `AI_QUOTA_EXCEEDED` | The project used all of its AI generations for today (resets at 00:00 UTC) — write the HTML with `create_template` or `update_template`, or retry tomorrow |
 | `INTERNAL_ERROR` | Something failed on our side — retry, and if it persists report it with `send_flare` including the `request_id` |
 
 ---

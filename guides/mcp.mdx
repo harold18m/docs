@@ -288,6 +288,8 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 | `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
 | `create_template` | `templates:write` | Crea una plantilla de email desde HTML y devuelve el link para abrirla en el editor. Las imágenes deben ser URLs públicas |
 | `update_template` | `templates:write` | Edita una plantilla existente conservando su id — cualquier campaña que ya la use sale con el contenido nuevo. Se puede cambiar HTML, asunto y/o nombre |
+| `generate_template` | `templates:write` | El motor de diseño escribe un email completo a partir de un brief, con la identidad de marca del proyecto, y lo guarda como plantilla. Tarda entre 30 y 90 segundos y consume el tope diario de IA del proyecto |
+| `edit_template_with_ai` | `templates:write` | Reescribe una plantilla existente siguiendo una instrucción en lenguaje natural, conservando su id. Solo para plantillas con diseño editable (las importadas como HTML crudo usan `update_template`) |
 | `create_campaign` | `campaigns:write` | Crea una campaña **siempre en borrador** — tú la revisas, completas y envías desde la app |
 | `cancel_campaign` | `campaigns:write` | Frena una campaña en curso o programada antes de que termine de enviar. No dispara nada — solo detiene |
 | `enroll_in_automation` | `automations:write` | Inscribe un contacto en una automatización **activa** — el flujo corre de inmediato y puede enviarle correo |
@@ -358,6 +360,7 @@ Toda respuesta que no sea 2xx trae la misma forma:
 | `CAMPAIGN_INCOMPLETE` | Falta algo (plantilla, remitente, asunto) para enviar o probar la campaña |
 | `AUTOMATION_STATE` | La automatización ya está en el estado pedido (pausarla si ya está pausada, y viceversa) |
 | `PROJECT_DISABLED` | El proyecto no puede operar ahora mismo — contacta soporte |
+| `AI_QUOTA_EXCEEDED` | El proyecto agotó sus generaciones por IA de hoy (se reinicia a las 00:00 UTC) — escribe el HTML con `create_template` o `update_template`, o reintenta mañana |
 | `INTERNAL_ERROR` | Algo falló de nuestro lado — reintenta, y si persiste repórtalo con `send_flare` incluyendo el `request_id` |
 
 ---
