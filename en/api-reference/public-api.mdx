@@ -61,7 +61,7 @@ Sends an individual email to up to 50 recipients.
 | `subject`         | string              | No        | Email subject. If omitted, `"Email from ReallyQuickEmails"` is used.                                             |
 | `cc`              | string \| string[]  | No        | Copy address(es). Max 10.                                                                                         |
 | `bcc`             | string \| string[]  | No        | Blind-copy address(es). Max 10.                                                                                   |
-| `attachments`     | array               | No        | List of attachments (max 10; max 10 MB per attachment and 10 MB total). Structure: `{ filename, url \| content (base64), contentType? }`. |
+| `attachments`     | array               | No        | List of attachments (max 10; max 25 MB per attachment and 25 MB total). Structure: `{ filename, url \| content (base64), contentType? }`. |
 | `environment`     | string              | No        | Routes this send's webhooks to the environment configured in the project. Format `[a-zA-Z0-9_.-]`, max 64 characters. If the key is not pre-configured in the dashboard, returns 400 `ENVIRONMENT_NOT_CONFIGURED`. See [Webhook environments](/en/concepts/webhook-environments). |
 
 <Info>

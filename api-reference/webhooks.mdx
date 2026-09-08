@@ -376,6 +376,8 @@ En vez del token, **el dominio identifica tu proyecto** y el **`Message-ID` iden
         "filename": "factura.pdf",
         "content_type": "application/pdf",
         "size": 50826,
+        "inline": false,
+        "content_id": null,
         "storage_key": "...",
         "download_url": "https://...?token=..."
       }
@@ -400,8 +402,8 @@ Igual que en outbound, el payload incluye `is_test` y, si el envío original us�
 |---|---|
 | `data.from` | Quien envió la respuesta (cliente externo). |
 | `data.to[]` | Dirección token a la que respondió. |
-| `data.text_body` / `data.html_body` | Cuerpo de la respuesta. |
-| `data.attachments[]` | Adjuntos del reply. Cada uno incluye `filename`, `content_type`, `size`, `storage_key` y `download_url` firmada con **TTL 7 días**. Descarga y persiste si necesitas retención mayor. |
+| `data.text_body` / `data.html_body` | Cuerpo de la respuesta. Renderiza `html_body`: las imágenes embebidas (firmas, logos) ya van dentro como `data:` URIs. En `text_body` aparecen como `[cid:…]`. |
+| `data.attachments[]` | Adjuntos del reply. Cada uno incluye `filename`, `content_type`, `size`, `storage_key` y `download_url` firmada con **TTL 7 días**. Descarga y persiste si necesitas retención mayor. `inline: true` marca las imágenes embebidas en el HTML (firmas, logos) — no son archivos que el remitente adjuntó; `content_id` trae su referencia `cid:`. |
 | `data.return_path_parsed` | `{ project_id, activity_id }` si la dirección respondida referencia directamente el envío original; `null` en caso contrario. |
 | `data.original_outbound` | Referencia al email original que disparó la conversación: `message_id`, `activity_id`, `campaign_id`, `email_type`, `thread_id` (`null` si no se pudo resolver). |
 

@@ -64,8 +64,8 @@ Cada objeto en el array `attachments` tiene la siguiente estructura:
 **Límites:**
 
 - Máximo **10 adjuntos** por correo.
-- Máximo **10 MB** por adjunto individual.
-- Máximo **10 MB** en total por correo (límite de la infraestructura de envío).
+- Máximo **25 MB** por adjunto individual.
+- Máximo **25 MB** en total por correo (límite de la infraestructura de envío).
 
 Los adjuntos se procesan en segundo plano: si uno excede los límites o su URL no es accesible, el envío falla async y queda en el activity record.
 

@@ -376,6 +376,8 @@ Instead of the token, **the domain identifies your project** and the **`Message-
         "filename": "invoice.pdf",
         "content_type": "application/pdf",
         "size": 50826,
+        "inline": false,
+        "content_id": null,
         "storage_key": "...",
         "download_url": "https://...?token=..."
       }
@@ -400,8 +402,8 @@ As with outbound, the payload includes `is_test` and, if the original send used 
 |---|---|
 | `data.from` | Who sent the reply (external customer). |
 | `data.to[]` | Token address that was replied to. |
-| `data.text_body` / `data.html_body` | Body of the reply. |
-| `data.attachments[]` | Reply attachments. Each one includes `filename`, `content_type`, `size`, `storage_key`, and a `download_url` signed with a **7-day TTL**. Download and persist if you need longer retention. |
+| `data.text_body` / `data.html_body` | Body of the reply. Render `html_body`: embedded images (signatures, logos) are already inlined as `data:` URIs. In `text_body` they show up as `[cid:…]`. |
+| `data.attachments[]` | Reply attachments. Each one includes `filename`, `content_type`, `size`, `storage_key`, and a `download_url` signed with a **7-day TTL**. Download and persist if you need longer retention. `inline: true` marks images embedded in the HTML (signatures, logos) — not files the sender attached; `content_id` carries their `cid:` reference. |
 | `data.return_path_parsed` | `{ project_id, activity_id }` if the replied-to address directly references the original send; `null` otherwise. |
 | `data.original_outbound` | Reference to the original email that started the conversation: `message_id`, `activity_id`, `campaign_id`, `email_type`, `thread_id` (`null` if it could not be resolved). |
 
