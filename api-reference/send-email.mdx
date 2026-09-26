@@ -534,7 +534,7 @@ El `sender` debe estar verificado antes de poder enviar. Hay dos formas:
 1. **Verificar el email individual** vía magic link (`POST /domains/verify-email`).
 2. **Verificar el dominio completo** vía DNS (`POST /domains/register`) — recomendado, mejora deliverability y permite enviar desde cualquier dirección del dominio.
 
-La verificación **no es síncrona**: un sender no verificado igual recibe `200` con `queued: true`, y el rechazo ocurre en segundo plano. El fallo queda en el activity record (`current_status: "failed"`, `error_message`), consultable vía [Activity](/api-reference/activity) con el `email_id`.
+Si el `sender` no está verificado (ni el email ni su dominio), `/v1/send-email` y `/v1/send-batch` responden `403` con `code: "SENDER_NOT_VERIFIED"` y **no se envía nada**. Si el remitente deja de estar verificado con envíos ya en cola, cada uno termina en `current_status: "failed"` y dispara el webhook [`email.failed`](/api-reference/webhooks#emailfailed).
 
 Ver más en [Domains API](/api-reference/domains).
 
@@ -546,10 +546,11 @@ Como el envío es asíncrono, los únicos errores **síncronos** (en la respuest
 | ------ | --------------------------------------------------------------------------- |
 | `400`  | Solicitud inválida. Faltan campos requeridos (`recipient`/`sender`, o `html`+`subject` sin `templateId`), `scheduled_at` no parseable, o `environment` no configurado. |
 | `401`  | API key inválida o ausente.                                                 |
+| `403`  | `SENDER_NOT_AUTHORIZED`: el `sender` no pertenece al proyecto. `SENDER_NOT_VERIFIED`: el `sender` no está verificado para enviar; verifica el dominio y vuelve a intentar. |
 | `404`  | Plantilla no encontrada (solo en modo `dry_run`; con envío real, una plantilla inexistente falla de forma asíncrona en segundo plano). |
 | `500`  | Error interno del servidor (incluye fallo al insertar el envío programado). |
 
-Los errores de **envío** (sender no verificado, adjunto inválido, rate limit) ocurren en segundo plano: el activity record pasa a `current_status: "failed"` con el detalle en `error_message`.
+Los errores de **envío** (adjunto inválido, rate limit, rechazo del proveedor) ocurren en segundo plano: el activity record pasa a `current_status: "failed"` con el detalle en `error_message` y se emite el webhook [`email.failed`](/api-reference/webhooks#emailfailed).
 
 ### Ejemplo de error
 

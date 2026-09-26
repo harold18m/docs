@@ -535,7 +535,7 @@ The `sender` must be verified before you can send. There are two ways:
 1. **Verify the individual email** via magic link (`POST /domains/verify-email`).
 2. **Verify the entire domain** via DNS (`POST /domains/register`) — recommended, improves deliverability and lets you send from any address on the domain.
 
-Verification is **not synchronous**: an unverified sender still receives `200` with `queued: true`, and the rejection happens in the background. The failure is recorded in the activity record (`current_status: "failed"`, `error_message`), queryable via [Activity](/en/api-reference/activity) with the `email_id`.
+If the `sender` is not verified (neither the address nor its domain), `/v1/send-email` and `/v1/send-batch` respond `403` with `code: "SENDER_NOT_VERIFIED"` and **nothing is sent**. If the sender stops being verified while sends are already queued, each one ends in `current_status: "failed"` and fires the [`email.failed`](/en/api-reference/webhooks#emailfailed) webhook.
 
 Learn more in [Domains API](/en/api-reference/domains).
 
@@ -547,10 +547,11 @@ Since sending is asynchronous, the only **synchronous** errors (in the HTTP resp
 | ------ | --------------------------------------------------------------------------- |
 | `400`  | Invalid request. Missing required fields (`recipient`/`sender`, or `html`+`subject` without `templateId`), unparseable `scheduled_at`, or unconfigured `environment`. |
 | `401`  | Invalid or missing API key.                                                 |
+| `403`  | `SENDER_NOT_AUTHORIZED`: the `sender` doesn't belong to the project. `SENDER_NOT_VERIFIED`: the `sender` isn't verified for sending; verify the domain and try again. |
 | `404`  | Template not found (only in `dry_run` mode; on an actual send, a nonexistent template fails asynchronously in the background). |
 | `500`  | Internal server error (includes failure to insert the scheduled send).      |
 
-**Send** errors (unverified sender, invalid attachment, rate limit) occur in the background: the activity record moves to `current_status: "failed"` with the detail in `error_message`.
+**Send** errors (invalid attachment, rate limit, provider rejection) occur in the background: the activity record moves to `current_status: "failed"` with the detail in `error_message`, and the [`email.failed`](/en/api-reference/webhooks#emailfailed) webhook fires.
 
 ### Error example
 
