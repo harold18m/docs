@@ -54,6 +54,7 @@ Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload
 | `email.open` | Destinatario abrió el email (pixel cargado) | — |
 | `email.click` | Click en un link | `url_clicked` |
 | `email.suppressed` | El destinatario está en la lista de supresión — el envío se bloqueó antes de salir | `email`, `suppressed_at` (ver [nota](#emailsuppressed)) |
+| `email.failed` | El envío falló de forma definitiva y el correo no salió | `error_code`, `error_message`, `permanent` (ver [nota](#emailfailed)) |
 | `email.inbound` | Destinatario respondió tu email | (ver sección Replies) |
 | `sender.verified` | Un remitente verificado por email individual (magic link) quedó listo | `identity_id`, `sender_email`, `can_send` |
 | `sender.failed` | La verificación del remitente individual falló | `identity_id`, `sender_email` |
@@ -127,6 +128,39 @@ Particularidades vs los demás eventos outbound:
     "suppression_reason": "bounce",
     "suppression_source": "ses_event",
     "suppression_description": "The address does not exist"
+  }
+}
+```
+
+### `email.failed`
+
+Se emite cuando un envío vía **API** falla de forma definitiva y el correo **no salió**: el remitente dejó de estar verificado, el proveedor rechazó el mensaje, se agotaron los reintentos o se acabó la cuota. Sale una sola vez por envío, con el fallo final (no en cada reintento), y lleva `is_test` y `environment` como los demás eventos outbound.
+
+- `error_code`: código estable para tu lógica (`sender_not_verified`, `rejected`, `rate_limit_exhausted`, `attachment_error`, `sender_domain_unauthenticated`, `quota_exceeded`, `send_failed`, …).
+- `error_message`: el motivo en texto legible.
+- `permanent`: `true` si reenviar lo mismo va a fallar igual (arregla la causa primero); `false` si puedes reintentar tal cual.
+- `message_id` siempre es `null`: el correo nunca se aceptó.
+
+Como `email.suppressed`, campañas y automatizaciones no lo disparan.
+
+```json
+{
+  "event": "email.failed",
+  "timestamp": "2026-09-25T14:56:47.000Z",
+  "project_id": "uuid",
+  "is_test": false,
+  "data": {
+    "activity_id": "uuid",
+    "message_id": null,
+    "idempotency_key": "pedido-1234",
+    "recipient": "destinatario@ejemplo.com",
+    "sender": "hola@tudominio.com",
+    "subject": "Tu pedido está en camino",
+    "event_type": "failed",
+    "event_timestamp": "2026-09-25T14:56:47.000Z",
+    "error_code": "sender_not_verified",
+    "error_message": "The sender is not verified for sending, so the email was not sent. Verify the sender domain in Settings → Domains and resend. Detail: …",
+    "permanent": true
   }
 }
 ```
