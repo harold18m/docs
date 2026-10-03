@@ -1,6 +1,6 @@
 ---
 title: Adjuntos
-description: "Adjunta archivos (MP3, PDF, .ics) a tus envíos por URL o base64."
+description: "Adjunta archivos (MP3, PDF, .ics, JPEG, PNG, WebP) a tus envíos por URL o base64."
 ---
 
 Adjunta archivos con el endpoint [`POST /send-email`](/api-reference/send-email). Se especifican en el campo `attachments` del cuerpo.
@@ -33,6 +33,9 @@ Solo se permiten los siguientes tipos MIME:
 | `application/pdf` | `.pdf` |
 | `text/calendar` | `.ics` |
 | `audio/mpeg` | `.mp3` |
+| `image/jpeg` | `.jpg`, `.jpeg` |
+| `image/png` | `.png` |
+| `image/webp` | `.webp` |
 
 Si el tipo MIME no coincide con estos, el envío falla en segundo plano (ver validación más abajo).
 
