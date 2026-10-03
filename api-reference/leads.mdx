@@ -21,7 +21,7 @@ Ver más en [API Pública v1](/api-reference/public-api#autenticacion).
 
 ### POST /v1/leads
 
-Crea o actualiza uno o varios leads. Si el email ya existe, se actualiza (upsert).
+Crea o actualiza uno o varios leads. Si el email ya existe, se actualiza (upsert): las claves de `data` que envíes se agregan o sobrescriben y el resto de atributos (incluido `_tags`) se conserva.
 
 | Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
