@@ -233,6 +233,7 @@ Los mismos workflows están registrados como **prompts MCP** (`prompts/list`, `p
 | `get_contact_activity` | Qué le pasó a un contacto: emails recibidos y eventos |
 | `list_events` | Eventos personalizados registrados en el proyecto |
 | `get_suppression_list` | Direcciones suprimidas que no recibirán email |
+| `check_suppression` | Por qué un correo no recibe emails: dónde está bloqueado, desde cuándo, por qué y sus últimos envíos |
 | `list_senders` | Remitentes verificados del proyecto |
 | `list_domains` | Dominios de envío y su estado de autenticación |
 
@@ -285,6 +286,7 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 | `set_attributes` | `contacts:write` | Agrega o actualiza atributos de un contacto existente (los demás se conservan) |
 | `track_event` | `contacts:write` | Registra un evento personalizado (compra, registro…). Puede disparar flujos por evento |
 | `suppress_email` | `contacts:write` | Agrega direcciones a la lista de supresión (dejan de recibir correo) |
+| `unsuppress_email` | `contacts:write` | Destraba hasta 100 correos en todas las capas. No toca bajas ni quejas de spam |
 | `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
 | `create_template` | `templates:write` | Crea una plantilla de email desde HTML y devuelve el link para abrirla en el editor. Las imágenes deben ser URLs públicas |
 | `update_template` | `templates:write` | Edita una plantilla existente conservando su id — cualquier campaña que ya la use sale con el contenido nuevo. Se puede cambiar HTML, asunto y/o nombre |
@@ -326,6 +328,25 @@ Todas soportan `idempotency_key`: la misma clave dentro de 24 h devuelve el resu
 </Accordion>
 
 </AccordionGroup>
+
+---
+
+## Destrabar un correo que no llega
+
+Si alguien de tu equipo o un cliente dice "no me llegan los correos", pídele a tu asistente:
+
+```text
+¿Por qué diego@tuempresa.com no está recibiendo correos? Si se puede, destrábalo.
+```
+
+El asistente llama a `check_suppression`, que dice en qué capa está bloqueado el correo, desde cuándo, por qué y cuáles fueron sus últimos envíos. Si se puede destrabar, llama a `unsuppress_email` y te dice qué limpió.
+
+Hay casos que no se destraban por aquí, a propósito:
+
+- **Bajas y quejas de spam**: solo la persona puede volver a suscribirse.
+- **Lista de bloqueo compartida con un dominio que no es tuyo**: afecta a todos los clientes, así que la quita soporte. Con tus propios dominios de envío verificados sí se destraba.
+
+Para hacerlo con `curl`, mira [Supresión](/api-reference/suppression).
 
 ---
 
