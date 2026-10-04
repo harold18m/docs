@@ -1,0 +1,128 @@
+---
+title: Suppression
+description: "Diagnose why an address is not receiving emails and unblock it yourself."
+---
+
+An address can stop receiving emails for three reasons, and these endpoints check all of them at once:
+
+| Layer | What it is | Who can unblock it |
+|---|---|---|
+| `project_list` | Your project's suppression list: bounces, complaints, unsubscribes and manual suppressions | You, except unsubscribes and complaints |
+| `shared_list` | The block list shared by every customer of the platform | You, **only** if the address belongs to one of your project's verified sending domains. Otherwise, support |
+| `send_cache` | The local copy of the shared list checked before sending | Fixed automatically once the shared list no longer has the address |
+
+<Info>
+  These endpoints use an **MCP key** (`rqe_mcp_*`), not the sending Secret Key. Create one in **Integrations → API → MCP Keys** with `contacts:read` (diagnosis) and `contacts:write` (unblock). The same endpoints are the `check_suppression` and `unsuppress_email` tools of the [MCP server](/en/guides/mcp#unblock-an-address-that-is-not-receiving-emails).
+</Info>
+
+## GET /v1/mcp/suppression/check
+
+Read-only diagnosis for **one** address. Scope: `contacts:read`.
+
+| Query | Type | Description |
+|---|---|---|
+| `email` | string | The address to check. Required. |
+
+```bash
+curl "https://api.reallyquickemails.com/v1/mcp/suppression/check?email=diego@yourcompany.com" \
+  -H "Authorization: Bearer rqe_mcp_..."
+```
+
+```json
+{
+  "data": {
+    "email": "diego@yourcompany.com",
+    "blocked": true,
+    "can_unsuppress_via_api": true,
+    "layers": {
+      "project_list": {
+        "blocked": true,
+        "entries": [
+          { "kind": "bounce", "reason": "bounce", "source": "ses_event", "since": "2026-09-30T14:02:11Z", "notes": null, "removable_via_api": true }
+        ]
+      },
+      "shared_list": { "blocked": false, "since": null, "reason": null, "own_domain": true },
+      "send_cache": {
+        "blocked": true,
+        "since": "2026-09-30T14:02:10Z",
+        "stale": true,
+        "detail": "Out of date: the shared block list no longer has this address. unsuppress_email clears it."
+      }
+    },
+    "recent_activity": [
+      { "created_at": "2026-10-03T12:00:00Z", "current_status": "suppressed", "message_id": null, "subject": "Your access", "error_message": null }
+    ],
+    "hard_bounces": 1,
+    "next_step": "Call unsuppress_email (POST /v1/mcp/suppression/remove) with this address."
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `blocked` | `true` if any layer blocks it. |
+| `can_unsuppress_via_api` | `true` if `POST /v1/mcp/suppression/remove` can unblock it. |
+| `layers.project_list.entries[].kind` | `bounce`, `manual`, `unsubscribe`, `complaint`, `imported_unknown` (imported from another platform without a clear reason) or `platform` (blocked for the whole platform). |
+| `layers.shared_list.own_domain` | `true` if the address domain is one of your project's verified sending domains. |
+| `layers.send_cache.stale` | `true` if the local copy blocks it but the shared list no longer does: unblocking fixes it. |
+| `recent_activity` | The last 10 emails to that address, with `current_status` and `message_id`. |
+| `hard_bounces` | Real hard bounces of that address in your project. |
+| `next_step` | What to do: unblock it, ask the person to opt back in, or contact support. |
+
+## POST /v1/mcp/suppression/remove
+
+Unblocks up to **100** addresses per call in every layer, in order. Scope: `contacts:write`.
+
+| Field | Type | Description |
+|---|---|---|
+| `emails` | string[] | Addresses to unblock (max 100). |
+| `idempotency_key` | string | Optional. Same key and same body within 24 h returns the original response without doing anything again. |
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/mcp/suppression/remove \
+  -H "Authorization: Bearer rqe_mcp_..." \
+  -H "Content-Type: application/json" \
+  -d '{ "emails": ["diego@yourcompany.com"] }'
+```
+
+```json
+{
+  "removed": 1,
+  "summary": { "unsuppressed": 1, "partially_unsuppressed": 0, "refused": 0, "not_suppressed": 0, "invalid": 0 },
+  "results": [
+    {
+      "email": "diego@yourcompany.com",
+      "status": "unsuppressed",
+      "can_send": true,
+      "layers": {
+        "project_list": { "blocked": true, "cleared": true, "since": "2026-09-30T14:02:11Z", "reason": "bounce" },
+        "shared_list": { "blocked": false, "cleared": false, "since": null, "reason": null },
+        "send_cache": { "blocked": true, "cleared": true, "since": "2026-09-30T14:02:10Z" }
+      },
+      "hard_bounces": 1
+    }
+  ]
+}
+```
+
+Each address comes back with a `status`:
+
+| `status` | Meaning |
+|---|---|
+| `unsuppressed` | Free in every layer. `can_send` is `true`. |
+| `partially_unsuppressed` | Part of it was cleared, but another layer still blocks it. That layer's `detail` says why. |
+| `refused` | Nothing was touched. For example, an unsubscribe or a spam complaint. |
+| `not_suppressed` | It was not blocked. |
+| `invalid` | Not a valid email address. |
+
+What this endpoint does **not** unblock, on purpose:
+
+- **Unsubscribes** (`unsubscribe`) and **spam complaints** (`complaint`): only the person can opt back in, for example by signing up again through a form.
+- **Imported without a clear reason** (`imported_unknown`): they may be unsubscribes from your previous platform. If you are sure, remove them from the app in **Contacts → Suppressed**.
+- **Shared list with a domain that is not yours**: it affects every customer, so support removes it. `requires_support` comes back `true`.
+
+<Warning>
+  If an address hard-bounced 2 or more times, the response includes `warning`: it will most likely bounce again and be suppressed again. Confirm with the person that the mailbox exists before sending again.
+</Warning>
+
+Each unblocked address emits the [`suppression.removed`](/en/api-reference/webhooks#suppressionadded-suppressionremoved) webhook.
