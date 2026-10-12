@@ -1,0 +1,153 @@
+---
+title: SMTP
+description: "Envía por RQE desde cualquier sistema que use un servidor de correo: WordPress, n8n, Magento o tu propio backend."
+---
+
+Si tu sistema ya sabe enviar correo por SMTP, no necesitas programar contra la API: cambia los datos del servidor de correo saliente y tus correos salen por RQE, con las mismas métricas y protecciones que un envío por API.
+
+## Datos de conexión
+
+| Campo | Valor |
+|---|---|
+| **Servidor** | `smtp.reallyquickemails.com` |
+| **Puerto** | `587` (STARTTLS) o `465` (SSL/TLS) |
+| **Usuario** | `rqe` |
+| **Contraseña** | La API key de tu proyecto (`sk_proj_…` o `sk_test_…`) |
+
+Encuéntralos en la app, en **Integraciones → SMTP**, con un botón para copiar cada uno.
+
+<Info>
+No hay credenciales SMTP aparte: la contraseña es la misma API key que usas en la API. Si la regeneras en **Integraciones → API Keys**, cámbiala también en tu sistema.
+</Info>
+
+### ¿Qué puerto uso?
+
+Los dos cifran la conexión. Elige según lo que te pida tu sistema en la opción de cifrado:
+
+| Tu sistema pide | Puerto |
+|---|---|
+| **TLS** o **STARTTLS** | `587` |
+| **SSL** | `465` |
+| No pregunta nada | `587` |
+
+`587` es el estándar para enviar desde aplicaciones y el que funciona en más sistemas. Por ejemplo, el cliente SMTP clásico de .NET (`System.Net.Mail.SmtpClient`) solo soporta `587`.
+
+---
+
+## Ejemplos
+
+<Tabs>
+  <Tab title="WordPress">
+    <Steps>
+      <Step title="Instala WP Mail SMTP">
+        En tu WordPress, ve a **Plugins → Añadir nuevo** e instala **WP Mail SMTP**.
+      </Step>
+      <Step title="Elige Otro SMTP">
+        En **WP Mail SMTP → Ajustes**, en *Mailer* elige **Otro SMTP**.
+      </Step>
+      <Step title="Pega los datos">
+        - **Host SMTP:** `smtp.reallyquickemails.com`
+        - **Cifrado:** TLS
+        - **Puerto SMTP:** `587`
+        - **Autenticación:** activada
+        - **Usuario SMTP:** `rqe`
+        - **Contraseña SMTP:** tu API key
+      </Step>
+      <Step title="Revisa el remitente">
+        En **Correo electrónico del remitente** usa un correo de un dominio verificado en RQE. Guarda y envía un correo de prueba desde la pestaña de pruebas del plugin.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="n8n">
+    En el nodo **Send Email**, crea una credencial **SMTP** con:
+
+    - **User:** `rqe`
+    - **Password:** tu API key
+    - **Host:** `smtp.reallyquickemails.com`
+    - **Port:** `587`
+    - **SSL/TLS:** desactivado (el nodo usa STARTTLS en el 587)
+
+    En **From Email** usa un correo de un dominio verificado.
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript
+    import nodemailer from "nodemailer";
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.reallyquickemails.com",
+      port: 587,
+      auth: { user: "rqe", pass: process.env.RQE_API_KEY },
+    });
+
+    await transporter.sendMail({
+      from: '"Tu marca" <hola@tudominio.com>',
+      to: "cliente@ejemplo.com",
+      subject: "Tu pedido está en camino",
+      html: "<p>Hola, tu pedido ya salió.</p>",
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import os, smtplib
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"] = "Tu marca <hola@tudominio.com>"
+    msg["To"] = "cliente@ejemplo.com"
+    msg["Subject"] = "Tu pedido está en camino"
+    msg.add_alternative("<p>Hola, tu pedido ya salió.</p>", subtype="html")
+
+    with smtplib.SMTP("smtp.reallyquickemails.com", 587) as s:
+        s.starttls()
+        s.login("rqe", os.environ["RQE_API_KEY"])
+        s.send_message(msg)
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Qué pasa con tu correo
+
+El correo que entra por SMTP sigue el mismo camino que uno enviado con [`POST /send-email`](/api-reference/send-email):
+
+- **Remitente verificado:** el `From` tiene que ser un correo de un dominio verificado en tu proyecto. Ver [Dominios y remitentes](/app/dominios-y-remitentes).
+- **Protecciones:** no se envía a correos dados de baja, rebotados o suprimidos, y aplican los límites y la cuota de tu plan.
+- **Métricas y webhooks:** cada correo aparece en **Actividad** con entregas, aperturas, clics y rebotes, y dispara tus webhooks.
+- **Copias:** `To`, `Cc` y `Bcc` funcionan como en cualquier cliente de correo.
+- **Sin duplicados:** si tu sistema reintenta el mismo mensaje (mismo `Message-ID`), no sale dos veces.
+- **Modo test:** con una key `sk_test_…` como contraseña, el envío queda marcado como prueba. Ver [Modos Live y Test](/concepts/test-mode).
+
+## Límites
+
+| | |
+|---|---|
+| Tamaño máximo por mensaje | 10 MB |
+| Adjuntos por mensaje | 10 |
+| Tipos de adjunto | PDF, JPG, PNG, WebP, ICS y MP3 (ver [Adjuntos](/guides/attachments)) |
+
+Un adjunto de otro tipo se rechaza en el momento con un error `550` que dice cuál archivo no se aceptó. Las imágenes incrustadas en el cuerpo (`cid:`) viajan como adjuntos normales.
+
+## Respuestas del servidor
+
+| Código | Qué significa | Qué hacer |
+|---|---|---|
+| `250` | El correo se aceptó y está en camino. | Nada. |
+| `535` | Usuario o contraseña incorrectos. | Revisa que el usuario sea `rqe` y la contraseña tu API key vigente. |
+| `550` | El correo no se puede enviar: remitente sin verificar, destinatario inválido o adjunto no permitido. El mensaje dice el motivo. | Corrige lo que indica el mensaje. Reintentar no sirve. |
+| `552` | El mensaje supera los 10 MB. | Reduce o quita adjuntos. |
+| `451` | Error temporal: límite de envío alcanzado o el servicio no responde. | Reintenta más tarde. La mayoría de los sistemas lo hacen solos. |
+| `421` | Demasiados intentos de inicio de sesión fallidos desde tu IP. | Espera una hora y revisa la contraseña. |
+
+---
+
+## Para equipos de TI
+
+Si tu empresa restringe las conexiones de salida, esto es lo que necesitas:
+
+- **Servidor:** `smtp.reallyquickemails.com`, IP fija **`44.213.243.205`**.
+- **Firewall:** permite la salida hacia `44.213.243.205` por el puerto `587` (y `465` si usan SSL).
+- **Cifrado:** TLS 1.2 o superior. El servidor no acepta usuario y contraseña sin cifrar.
+- **Certificado:** emitido por Let's Encrypt y renovado automáticamente cada ~60 días. **No lo fijes** (*certificate pinning*) en tu sistema: se rompería con cada renovación.
+- **Seguridad:** tras 5 intentos de inicio de sesión fallidos desde una IP en 10 minutos, esa IP queda bloqueada una hora.
