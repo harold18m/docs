@@ -1,0 +1,153 @@
+---
+title: SMTP
+description: "Send through RQE from any system that uses a mail server: WordPress, n8n, Magento or your own backend."
+---
+
+If your system already sends email over SMTP, you don't need to code against the API: change the outgoing mail server settings and your emails go out through RQE, with the same metrics and protections as an API send.
+
+## Connection details
+
+| Field | Value |
+|---|---|
+| **Server** | `smtp.reallyquickemails.com` |
+| **Port** | `587` (STARTTLS) or `465` (SSL/TLS) |
+| **Username** | `rqe` |
+| **Password** | Your project's API key (`sk_proj_…` or `sk_test_…`) |
+
+Find them in the app under **Integrations → SMTP**, with a copy button for each one.
+
+<Info>
+There are no separate SMTP credentials: the password is the same API key you use with the API. If you regenerate it under **Integrations → API Keys**, update it in your system too.
+</Info>
+
+### Which port should I use?
+
+Both encrypt the connection. Pick based on what your system asks for in the encryption option:
+
+| Your system asks for | Port |
+|---|---|
+| **TLS** or **STARTTLS** | `587` |
+| **SSL** | `465` |
+| Doesn't ask | `587` |
+
+`587` is the standard for sending from applications and works on the most systems. For example, the classic .NET SMTP client (`System.Net.Mail.SmtpClient`) only supports `587`.
+
+---
+
+## Examples
+
+<Tabs>
+  <Tab title="WordPress">
+    <Steps>
+      <Step title="Install WP Mail SMTP">
+        In WordPress, go to **Plugins → Add New** and install **WP Mail SMTP**.
+      </Step>
+      <Step title="Choose Other SMTP">
+        Under **WP Mail SMTP → Settings**, set *Mailer* to **Other SMTP**.
+      </Step>
+      <Step title="Paste the details">
+        - **SMTP Host:** `smtp.reallyquickemails.com`
+        - **Encryption:** TLS
+        - **SMTP Port:** `587`
+        - **Authentication:** on
+        - **SMTP Username:** `rqe`
+        - **SMTP Password:** your API key
+      </Step>
+      <Step title="Check the sender">
+        In **From Email**, use an address on a domain verified in RQE. Save and send a test email from the plugin's test tab.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="n8n">
+    In the **Send Email** node, create an **SMTP** credential with:
+
+    - **User:** `rqe`
+    - **Password:** your API key
+    - **Host:** `smtp.reallyquickemails.com`
+    - **Port:** `587`
+    - **SSL/TLS:** off (the node uses STARTTLS on 587)
+
+    In **From Email**, use an address on a verified domain.
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript
+    import nodemailer from "nodemailer";
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.reallyquickemails.com",
+      port: 587,
+      auth: { user: "rqe", pass: process.env.RQE_API_KEY },
+    });
+
+    await transporter.sendMail({
+      from: '"Your brand" <hello@yourdomain.com>',
+      to: "customer@example.com",
+      subject: "Your order is on its way",
+      html: "<p>Hi, your order has shipped.</p>",
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import os, smtplib
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"] = "Your brand <hello@yourdomain.com>"
+    msg["To"] = "customer@example.com"
+    msg["Subject"] = "Your order is on its way"
+    msg.add_alternative("<p>Hi, your order has shipped.</p>", subtype="html")
+
+    with smtplib.SMTP("smtp.reallyquickemails.com", 587) as s:
+        s.starttls()
+        s.login("rqe", os.environ["RQE_API_KEY"])
+        s.send_message(msg)
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## What happens to your email
+
+Email that comes in over SMTP follows the same path as one sent with [`POST /send-email`](/en/api-reference/send-email):
+
+- **Verified sender:** the `From` must be an address on a domain verified in your project. See [Domains and senders](/en/app/domains-and-senders).
+- **Protections:** nothing is sent to unsubscribed, bounced or suppressed addresses, and your plan's limits and quota apply.
+- **Metrics and webhooks:** every email shows up in **Activity** with deliveries, opens, clicks and bounces, and fires your webhooks.
+- **Copies:** `To`, `Cc` and `Bcc` work like in any email client.
+- **No duplicates:** if your system retries the same message (same `Message-ID`), it doesn't go out twice.
+- **Test mode:** with an `sk_test_…` key as the password, the send is flagged as a test. See [Live and Test modes](/en/concepts/test-mode).
+
+## Limits
+
+| | |
+|---|---|
+| Maximum message size | 10 MB |
+| Attachments per message | 10 |
+| Attachment types | PDF, JPG, PNG, WebP, ICS and MP3 (see [Attachments](/en/guides/attachments)) |
+
+An attachment of any other type is rejected right away with a `550` error naming the file. Images embedded in the body (`cid:`) travel as regular attachments.
+
+## Server responses
+
+| Code | What it means | What to do |
+|---|---|---|
+| `250` | The email was accepted and is on its way. | Nothing. |
+| `535` | Wrong username or password. | Check that the username is `rqe` and the password is your current API key. |
+| `550` | The email can't be sent: unverified sender, invalid recipient or disallowed attachment. The message says why. | Fix what the message says. Retrying won't help. |
+| `552` | The message is over 10 MB. | Shrink or remove attachments. |
+| `451` | Temporary error: sending limit reached or the service isn't responding. | Retry later. Most systems do this on their own. |
+| `421` | Too many failed logins from your IP. | Wait an hour and check the password. |
+
+---
+
+## For IT teams
+
+If your company restricts outbound connections, here's what you need:
+
+- **Server:** `smtp.reallyquickemails.com`, fixed IP **`44.213.243.205`**.
+- **Firewall:** allow outbound traffic to `44.213.243.205` on port `587` (and `465` if you use SSL).
+- **Encryption:** TLS 1.2 or higher. The server won't accept a username and password without encryption.
+- **Certificate:** issued by Let's Encrypt and renewed automatically every ~60 days. **Don't pin it** in your system: pinning would break on every renewal.
+- **Security:** after 5 failed logins from one IP within 10 minutes, that IP is blocked for an hour.
