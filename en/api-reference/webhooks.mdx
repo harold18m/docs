@@ -202,10 +202,15 @@ For a complaint, `reason` is `complaint` and `complaint_feedback_type` arrives i
   "data": {
     "email": "recipient@example.com",
     "removed_at": "2026-08-19T00:45:00.000Z",
-    "removed_by": "uuid"
+    "removed_by": "uuid",
+    "via": "api",
+    "layers_cleared": ["project_list", "send_cache"],
+    "can_send": true
   }
 }
 ```
+
+`via` is `app` or `api`. `layers_cleared` lists the layers that were cleared and `can_send` whether the address is fully free — see [Suppression](/en/api-reference/suppression). `removed_by` is `null` when unblocked through the API.
 
 <Note>
   `suppression.added` is **not** emitted for bounces with subtype `OnAccountSuppressionList`: that is an echo of the provider's own list, not a new bounce, and it does not create a suppression in your project.

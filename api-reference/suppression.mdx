@@ -1,0 +1,128 @@
+---
+title: Supresión
+description: "Diagnostica por qué un correo no recibe emails y destrábalo tú mismo."
+---
+
+Un correo puede dejar de recibir emails por tres motivos, y estos endpoints los revisan todos de una vez:
+
+| Capa | Qué es | Quién la destraba |
+|---|---|---|
+| `project_list` | La lista de supresión de tu proyecto: rebotes, quejas, bajas y supresiones manuales | Tú, salvo bajas y quejas |
+| `shared_list` | La lista de bloqueo compartida por todos los clientes de la plataforma | Tú, **solo** si el correo es de un dominio de envío verificado de tu proyecto. Si no, soporte |
+| `send_cache` | La copia local de la lista compartida que se revisa antes de enviar | Se corrige sola cuando la lista compartida ya no tiene el correo |
+
+<Info>
+  Se autentican con una **clave MCP** (`rqe_mcp_*`), no con la Secret Key del envío. Créala en **Integraciones → API → MCP Keys** con los permisos `contacts:read` (diagnóstico) y `contacts:write` (destrabar). Los mismos endpoints son las herramientas `check_suppression` y `unsuppress_email` del [servidor MCP](/guides/mcp#destrabar-un-correo-que-no-llega).
+</Info>
+
+## GET /v1/mcp/suppression/check
+
+Diagnóstico de solo lectura para **un** correo. Permiso: `contacts:read`.
+
+| Query | Tipo | Descripción |
+|---|---|---|
+| `email` | string | El correo a revisar. Obligatorio. |
+
+```bash
+curl "https://api.reallyquickemails.com/v1/mcp/suppression/check?email=diego@tuempresa.com" \
+  -H "Authorization: Bearer rqe_mcp_..."
+```
+
+```json
+{
+  "data": {
+    "email": "diego@tuempresa.com",
+    "blocked": true,
+    "can_unsuppress_via_api": true,
+    "layers": {
+      "project_list": {
+        "blocked": true,
+        "entries": [
+          { "kind": "bounce", "reason": "bounce", "source": "ses_event", "since": "2026-09-30T14:02:11Z", "notes": null, "removable_via_api": true }
+        ]
+      },
+      "shared_list": { "blocked": false, "since": null, "reason": null, "own_domain": true },
+      "send_cache": {
+        "blocked": true,
+        "since": "2026-09-30T14:02:10Z",
+        "stale": true,
+        "detail": "Out of date: the shared block list no longer has this address. unsuppress_email clears it."
+      }
+    },
+    "recent_activity": [
+      { "created_at": "2026-10-03T12:00:00Z", "current_status": "suppressed", "message_id": null, "subject": "Tu acceso", "error_message": null }
+    ],
+    "hard_bounces": 1,
+    "next_step": "Call unsuppress_email (POST /v1/mcp/suppression/remove) with this address."
+  }
+}
+```
+
+| Campo | Descripción |
+|---|---|
+| `blocked` | `true` si alguna capa lo bloquea. |
+| `can_unsuppress_via_api` | `true` si `POST /v1/mcp/suppression/remove` puede destrabarlo. |
+| `layers.project_list.entries[].kind` | `bounce`, `manual`, `unsubscribe`, `complaint`, `imported_unknown` (importado de otra plataforma sin motivo claro) o `platform` (bloqueo de toda la plataforma). |
+| `layers.shared_list.own_domain` | `true` si el dominio del correo es un dominio de envío verificado de tu proyecto. |
+| `layers.send_cache.stale` | `true` si la copia local lo bloquea pero la lista compartida ya no: se corrige al destrabar. |
+| `recent_activity` | Los últimos 10 envíos a ese correo, con `current_status` y `message_id`. |
+| `hard_bounces` | Rebotes permanentes reales de ese correo en tu proyecto. |
+| `next_step` | Qué hacer: destrabarlo, pedirle a la persona que se vuelva a suscribir o escribir a soporte. |
+
+## POST /v1/mcp/suppression/remove
+
+Destraba hasta **100** correos por llamada en todas las capas, en orden. Permiso: `contacts:write`.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `emails` | string[] | Correos a destrabar (máximo 100). |
+| `idempotency_key` | string | Opcional. Misma clave y mismo body en 24 h devuelve la respuesta original sin repetir nada. |
+
+```bash
+curl -X POST https://api.reallyquickemails.com/v1/mcp/suppression/remove \
+  -H "Authorization: Bearer rqe_mcp_..." \
+  -H "Content-Type: application/json" \
+  -d '{ "emails": ["diego@tuempresa.com"] }'
+```
+
+```json
+{
+  "removed": 1,
+  "summary": { "unsuppressed": 1, "partially_unsuppressed": 0, "refused": 0, "not_suppressed": 0, "invalid": 0 },
+  "results": [
+    {
+      "email": "diego@tuempresa.com",
+      "status": "unsuppressed",
+      "can_send": true,
+      "layers": {
+        "project_list": { "blocked": true, "cleared": true, "since": "2026-09-30T14:02:11Z", "reason": "bounce" },
+        "shared_list": { "blocked": false, "cleared": false, "since": null, "reason": null },
+        "send_cache": { "blocked": true, "cleared": true, "since": "2026-09-30T14:02:10Z" }
+      },
+      "hard_bounces": 1
+    }
+  ]
+}
+```
+
+Cada correo trae su `status`:
+
+| `status` | Significa |
+|---|---|
+| `unsuppressed` | Quedó libre en todas las capas. `can_send` es `true`. |
+| `partially_unsuppressed` | Se limpió una parte, pero otra capa lo sigue bloqueando. El `detail` de esa capa dice por qué. |
+| `refused` | No se tocó nada. Por ejemplo, una baja o una queja de spam. |
+| `not_suppressed` | No estaba bloqueado. |
+| `invalid` | No es un correo válido. |
+
+Lo que este endpoint **no** destraba, a propósito:
+
+- **Bajas** (`unsubscribe`) y **quejas de spam** (`complaint`): solo la persona puede volver a suscribirse, por ejemplo registrándose de nuevo en un formulario.
+- **Importados sin motivo claro** (`imported_unknown`): pueden ser bajas de tu plataforma anterior. Si estás seguro, quítalos desde la app en **Contactos → Suprimidos**.
+- **Lista compartida con un dominio que no es tuyo**: afecta a todos los clientes, así que la quita soporte. `requires_support` viene en `true`.
+
+<Warning>
+  Si un correo tuvo 2 o más rebotes permanentes, la respuesta trae `warning`: lo más probable es que vuelva a rebotar y se suprima de nuevo. Confirma con la persona que el buzón existe antes de reenviarle.
+</Warning>
+
+Cada correo destrabado emite el webhook [`suppression.removed`](/api-reference/webhooks#suppressionadded-suppressionremoved).

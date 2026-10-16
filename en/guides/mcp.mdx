@@ -234,6 +234,7 @@ The same workflows are registered as **MCP prompts** (`prompts/list`, `prompts/g
 | `get_contact_activity` | What happened to a contact: emails received and events |
 | `list_events` | Custom events tracked for the project |
 | `get_suppression_list` | Suppressed addresses that will not receive email |
+| `check_suppression` | Why an address is not receiving emails: where it is blocked, since when, why, and its last emails |
 | `list_senders` | Verified sender identities of the project |
 | `list_domains` | Sending domains and their authentication status |
 
@@ -286,6 +287,7 @@ These modify real data. None of them send email directly, but the ones marked ca
 | `set_attributes` | `contacts:write` | Adds or updates attributes on an existing contact (the rest are kept) |
 | `track_event` | `contacts:write` | Tracks a custom event (purchase, signup…). May trigger event-based flows |
 | `suppress_email` | `contacts:write` | Adds addresses to the suppression list (they stop receiving email) |
+| `unsuppress_email` | `contacts:write` | Unblocks up to 100 addresses in every layer. Does not touch unsubscribes or spam complaints |
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
 | `create_template` | `templates:write` | Creates an email template from HTML and returns the link to open it in the editor. Images must be public URLs |
 | `update_template` | `templates:write` | Edits an existing template in place, keeping its id — any campaign already using it goes out with the new content. HTML, subject and/or name can be changed |
@@ -327,6 +329,25 @@ All three support `idempotency_key`: the same key within 24h returns the previou
 </Accordion>
 
 </AccordionGroup>
+
+---
+
+## Unblock an address that is not receiving emails
+
+If someone on your team or a customer says "I am not getting the emails", ask your assistant:
+
+```text
+Why is diego@yourcompany.com not receiving emails? Unblock it if you can.
+```
+
+The assistant calls `check_suppression`, which tells in which layer the address is blocked, since when, why, and what its last emails were. If it can be unblocked, it calls `unsuppress_email` and tells you what it cleared.
+
+Some cases are not unblocked here, on purpose:
+
+- **Unsubscribes and spam complaints**: only the person can opt back in.
+- **Shared block list with a domain that is not yours**: it affects every customer, so support removes it. With your own verified sending domains it is unblocked.
+
+To do it with `curl`, see [Suppression](/en/api-reference/suppression).
 
 ---
 

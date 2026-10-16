@@ -65,7 +65,8 @@
               "api-reference/leads",
               "api-reference/templates",
               "api-reference/events",
-              "api-reference/activity"
+              "api-reference/activity",
+              "api-reference/suppression"
             ]
           }
         ]
@@ -122,7 +123,8 @@
               "en/api-reference/leads",
               "en/api-reference/templates",
               "en/api-reference/events",
-              "en/api-reference/activity"
+              "en/api-reference/activity",
+              "en/api-reference/suppression"
             ]
           }
         ]

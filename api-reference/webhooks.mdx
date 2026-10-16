@@ -202,10 +202,15 @@ En una queja, `reason` es `complaint` y en lugar de los campos de rebote llega `
   "data": {
     "email": "destinatario@ejemplo.com",
     "removed_at": "2026-08-19T00:45:00.000Z",
-    "removed_by": "uuid"
+    "removed_by": "uuid",
+    "via": "api",
+    "layers_cleared": ["project_list", "send_cache"],
+    "can_send": true
   }
 }
 ```
+
+`via` es `app` o `api`. `layers_cleared` dice qué capas se limpiaron y `can_send` si quedó libre del todo — ver [Supresión](/api-reference/suppression). `removed_by` es `null` cuando se destrabó por API.
 
 <Note>
   `suppression.added` **no** se emite para los rebotes de subtipo `OnAccountSuppressionList`: ese es el eco de la lista del proveedor, no un rebote nuevo, y no genera una supresión en tu proyecto.
