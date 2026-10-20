@@ -39,7 +39,7 @@ Es el camino recomendado. Un solo `POST` crea el proyecto, registra el dominio d
     `domain.verification_url` es una página pública que muestra los registros y verifica con un botón. La abre el cliente final sin cuenta RQE: es lo único que necesitas mandarle.
   </Step>
   <Step title="Espera el webhook `domain.verified`">
-    No poleas. RQE reintenta la verificación sola y avisa por webhook cuando el DNS propaga. Ver [Webhooks](/api-reference/webhooks#domainverified-domainfailed).
+    No poleas. RQE reintenta la verificación sola y avisa por webhook cuando el DNS propaga. Ver [Webhooks](/api-reference/webhooks#domain-verified-/-domain-failed).
   </Step>
   <Step title="Opera en su nombre">
     Con la `api_key` del cliente, [envía](/api-reference/public-api), gestiona [contactos](/api-reference/leads) y lee actividad — todo aislado a ese proyecto.

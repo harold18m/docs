@@ -58,10 +58,10 @@ Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload
 | `email.inbound` | Destinatario respondió tu email | (ver sección Replies) |
 | `sender.verified` | Un remitente verificado por email individual (magic link) quedó listo | `identity_id`, `sender_email`, `can_send` |
 | `sender.failed` | La verificación del remitente individual falló | `identity_id`, `sender_email` |
-| `domain.verified` | Un dominio de envío quedó verificado (dominio + DKIM) | ver [abajo](#domainverified-domainfailed) |
-| `domain.failed` | La verificación del dominio falló en SES | ver [abajo](#domainverified-domainfailed) |
-| `domain.send_ready` | El dominio ya puede enviar, aunque DKIM todavía no termine de propagar | ver [abajo](#domainsendready) |
-| `domain.mail_from_failed` | El dominio sigue enviando, pero al cliente le falta publicar el registro MX del MAIL FROM | ver [abajo](#domainmailfromfailed) |
+| `domain.verified` | Un dominio de envío quedó verificado (dominio + DKIM) | ver [abajo](#domain-verified-/-domain-failed) |
+| `domain.failed` | La verificación del dominio falló en SES | ver [abajo](#domain-verified-/-domain-failed) |
+| `domain.send_ready` | El dominio ya puede enviar, aunque DKIM todavía no termine de propagar | ver [abajo](#domain-send_ready) |
+| `domain.mail_from_failed` | El dominio sigue enviando, pero al cliente le falta publicar el registro MX del MAIL FROM | ver [abajo](#domain-mail_from_failed) |
 | `suppression.added` | Una dirección entró a tu lista de supresión (rebote duro o queja) | `email`, `reason`, `source`, `description` (ver [abajo](#suppressionadded-suppressionremoved)) |
 | `suppression.removed` | Una dirección salió de tu lista de supresión | `email`, `removed_at` (ver [abajo](#suppressionadded-suppressionremoved)) |
 
