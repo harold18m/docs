@@ -61,6 +61,7 @@ Replace the tunnel URL with your server's. The payload's `is_test` flag distingu
 | `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domainverified-domainfailed) |
 | `domain.failed` | Domain verification failed in SES | see [below](#domainverified-domainfailed) |
 | `domain.send_ready` | The domain can already send, even if DKIM hasn't finished propagating | see [below](#domainsendready) |
+| `domain.mail_from_failed` | The domain still sends, but your customer hasn't published the MAIL FROM MX record | see [below](#domainmailfromfailed) |
 | `suppression.added` | An address entered your suppression list (hard bounce or complaint) | `email`, `reason`, `source`, `description` (see [below](#suppressionadded-suppressionremoved)) |
 | `suppression.removed` | An address left your suppression list | `email`, `removed_at` (see [below](#suppressionadded-suppressionremoved)) |
 
@@ -273,6 +274,46 @@ Emitted when a sending domain **changes** verification state. They're the altern
 <Note>
   `domain.failed` arrives in the same shape, with `verification_status: "failed"` and `can_send: false`. Check `details` to see which part failed (`domain_verification` or `dkim_verification`), and call `POST /domains/{domain}/recreate` if DKIM is stuck.
 </Note>
+
+### `domain.mail_from_failed`
+
+Emitted when the domain is verified but SES couldn't find the **MX** record for the MAIL FROM subdomain (`send.<domain>`). It's the same case that makes AWS send the *"Custom MAIL FROM Domain Setup FAILURE"* email: with this event you handle it yourself and notify your customer under your own brand.
+
+**Sending doesn't stop.** The domain keeps sending, but with unaligned SPF, which lowers deliverability (especially at Microsoft). It fixes itself: once the customer publishes the record, RQE detects it and re-enables MAIL FROM, with no call needed from you.
+
+```json
+{
+  "event": "domain.mail_from_failed",
+  "timestamp": "2026-10-20T14:05:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "identity_type": "domain",
+    "domain": "mystore.com",
+    "external_key": "customer-123",
+    "mail_from_domain": "send.mystore.com",
+    "mail_from_status": "Failed",
+    "required_record": {
+      "type": "MX",
+      "name": "send.mystore.com",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "priority": 10
+    },
+    "description": "El dominio sigue enviando, pero sin SPF alineado: falta publicar el registro MX en send.mystore.com. Al publicarlo se corrige solo.",
+    "detected_at": "2026-10-20T14:05:00.000Z"
+  }
+}
+```
+
+**What to do when you receive it:** show your customer `required_record` as is, for example:
+
+> Your domain **mystore.com** is missing a record that helps your emails get delivered. Add an **MX** record to your DNS with name `send`, value `feedback-smtp.us-east-1.amazonses.com` and priority `10`.
+
+Use `external_key` (the one you sent when creating the domain) to match it to your customer.
+
+<Info>
+  **Once per failure.** The event doesn't repeat while the record is still missing. If the customer publishes it and it later fails again, it's emitted again with a new event id.
+</Info>
 
 ## Request headers
 

@@ -61,6 +61,7 @@ Reemplaza la URL del túnel por la de tu servidor. El flag `is_test` del payload
 | `domain.verified` | Un dominio de envío quedó verificado (dominio + DKIM) | ver [abajo](#domainverified-domainfailed) |
 | `domain.failed` | La verificación del dominio falló en SES | ver [abajo](#domainverified-domainfailed) |
 | `domain.send_ready` | El dominio ya puede enviar, aunque DKIM todavía no termine de propagar | ver [abajo](#domainsendready) |
+| `domain.mail_from_failed` | El dominio sigue enviando, pero al cliente le falta publicar el registro MX del MAIL FROM | ver [abajo](#domainmailfromfailed) |
 | `suppression.added` | Una dirección entró a tu lista de supresión (rebote duro o queja) | `email`, `reason`, `source`, `description` (ver [abajo](#suppressionadded-suppressionremoved)) |
 | `suppression.removed` | Una dirección salió de tu lista de supresión | `email`, `removed_at` (ver [abajo](#suppressionadded-suppressionremoved)) |
 
@@ -273,6 +274,46 @@ Se emiten cuando un dominio de envío **cambia** de estado de verificación. Son
 <Note>
   `domain.failed` llega con la misma forma, con `verification_status: "failed"` y `can_send: false`. Revisa `details` para saber qué parte falló (`domain_verification` o `dkim_verification`) y llama a `POST /domains/{domain}/recreate` si DKIM quedó atascado.
 </Note>
+
+### `domain.mail_from_failed`
+
+Se emite cuando el dominio está verificado pero SES no encontró el registro **MX** del subdominio MAIL FROM (`send.<dominio>`). Es el mismo caso por el que AWS manda el correo *"Custom MAIL FROM Domain Setup FAILURE"*: con este evento lo manejas tú y avisas a tu cliente con tu propia marca.
+
+**No corta el envío.** El dominio sigue enviando, pero con SPF sin alinear, y eso baja la entregabilidad (sobre todo en Microsoft). Se arregla solo: cuando el cliente publica el registro, RQE lo detecta y reactiva el MAIL FROM, sin que tengas que llamar a nada.
+
+```json
+{
+  "event": "domain.mail_from_failed",
+  "timestamp": "2026-10-20T14:05:00.000Z",
+  "project_id": "uuid",
+  "data": {
+    "identity_id": "uuid",
+    "identity_type": "domain",
+    "domain": "mitienda.com",
+    "external_key": "cliente-123",
+    "mail_from_domain": "send.mitienda.com",
+    "mail_from_status": "Failed",
+    "required_record": {
+      "type": "MX",
+      "name": "send.mitienda.com",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "priority": 10
+    },
+    "description": "El dominio sigue enviando, pero sin SPF alineado: falta publicar el registro MX en send.mitienda.com. Al publicarlo se corrige solo.",
+    "detected_at": "2026-10-20T14:05:00.000Z"
+  }
+}
+```
+
+**Qué hacer al recibirlo:** muéstrale a tu cliente `required_record` tal cual, por ejemplo:
+
+> A tu dominio **mitienda.com** le falta un registro para que tus correos lleguen mejor. Agrega en tu DNS un registro **MX** con nombre `send`, valor `feedback-smtp.us-east-1.amazonses.com` y prioridad `10`.
+
+Usa `external_key` (el que mandaste al crear el dominio) para saber a qué cliente tuyo corresponde.
+
+<Info>
+  **Una vez por fallo.** El evento no se repite mientras el registro siga faltando. Si el cliente lo publica y más adelante vuelve a fallar, se emite de nuevo con otro id de evento.
+</Info>
 
 ## Headers de la request
 
