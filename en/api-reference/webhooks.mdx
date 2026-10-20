@@ -58,10 +58,10 @@ Replace the tunnel URL with your server's. The payload's `is_test` flag distingu
 | `email.inbound` | Recipient replied to your email | (see Replies section) |
 | `sender.verified` | A sender verified by individual email (magic link) is ready | `identity_id`, `sender_email`, `can_send` |
 | `sender.failed` | Individual sender verification failed | `identity_id`, `sender_email` |
-| `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domainverified-domainfailed) |
-| `domain.failed` | Domain verification failed in SES | see [below](#domainverified-domainfailed) |
-| `domain.send_ready` | The domain can already send, even if DKIM hasn't finished propagating | see [below](#domainsendready) |
-| `domain.mail_from_failed` | The domain still sends, but your customer hasn't published the MAIL FROM MX record | see [below](#domainmailfromfailed) |
+| `domain.verified` | A sending domain became verified (domain + DKIM) | see [below](#domain-verified-/-domain-failed) |
+| `domain.failed` | Domain verification failed in SES | see [below](#domain-verified-/-domain-failed) |
+| `domain.send_ready` | The domain can already send, even if DKIM hasn't finished propagating | see [below](#domain-send_ready) |
+| `domain.mail_from_failed` | The domain still sends, but your customer hasn't published the MAIL FROM MX record | see [below](#domain-mail_from_failed) |
 | `suppression.added` | An address entered your suppression list (hard bounce or complaint) | `email`, `reason`, `source`, `description` (see [below](#suppressionadded-suppressionremoved)) |
 | `suppression.removed` | An address left your suppression list | `email`, `removed_at` (see [below](#suppressionadded-suppressionremoved)) |
 

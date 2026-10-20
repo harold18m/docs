@@ -39,7 +39,7 @@ This is the recommended path. A single `POST` creates the project, registers the
     `domain.verification_url` is a public page that shows the records and verifies with one button. Your end client opens it without an RQE account: it's the only thing you need to send them.
   </Step>
   <Step title="Wait for the `domain.verified` webhook">
-    Don't poll. RQE re-verifies on its own and notifies you by webhook once DNS propagates. See [Webhooks](/en/api-reference/webhooks#domainverified-domainfailed).
+    Don't poll. RQE re-verifies on its own and notifies you by webhook once DNS propagates. See [Webhooks](/en/api-reference/webhooks#domain-verified-/-domain-failed).
   </Step>
   <Step title="Operate on their behalf">
     With the client's `api_key`, [send](/en/api-reference/public-api), manage [contacts](/en/api-reference/leads) and read activity — all isolated to that project.
