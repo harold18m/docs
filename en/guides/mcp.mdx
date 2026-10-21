@@ -201,6 +201,7 @@ The same workflows are registered as **MCP prompts** (`prompts/list`, `prompts/g
 | Workflow | What it guides |
 |---|---|
 | `launch_email_campaign` | Design, test and launch a campaign to an existing audience, with human approval before it sends |
+| `design_from_reference` | Build an email from your brief, a design to replicate (e.g. exported from Figma) and your photos, the same way the app does |
 | `import_design_and_send` | Turn an already-designed HTML email into a sent campaign |
 | `set_up_domain` | Authenticate a sending domain so campaigns land in the inbox |
 | `improve_deliverability` | Diagnose why delivery, opens or clicks are low, and fix what can be fixed from chat |
@@ -289,8 +290,8 @@ These modify real data. None of them send email directly, but the ones marked ca
 | `create_segment` | `segments:write` | Creates an empty segment; you fill it from the app afterwards |
 | `create_template` | `templates:write` | Creates an email template from HTML and returns the link to open it in the editor. Images must be public URLs |
 | `update_template` | `templates:write` | Edits an existing template in place, keeping its id — any campaign already using it goes out with the new content. HTML, subject and/or name can be changed |
-| `generate_template` | `templates:write` | The design engine writes a complete email from a brief, using the project's brand identity, and saves it as a template. Takes 30-90 seconds and counts against the project's daily AI limit |
-| `edit_template_with_ai` | `templates:write` | Rewrites an existing template following a plain-language instruction, keeping its id. Only for templates with an editable design (ones imported as raw HTML use `update_template`) |
+| `generate_template` | `templates:write` | The design engine writes a complete email from a brief, using the project's brand identity, and saves it as a template. Takes images the same way the app does: `reference_image_urls` (up to 3, a design to replicate, e.g. a PNG exported from Figma) and `image_urls` (up to 5 of your own photos, placed as they are). Public https URLs, png/jpeg/gif/webp up to 5 MB: upload them first with `upload_image`. Takes 30-90 seconds and counts against the project's daily AI limit |
+| `edit_template_with_ai` | `templates:write` | Rewrites an existing template following a plain-language instruction, keeping its id. Accepts the same `reference_image_urls` and `image_urls` as `generate_template`. Only for templates with an editable design (ones imported as raw HTML use `update_template`) |
 | `create_campaign` | `campaigns:write` | Creates a campaign **always as a draft** — you review, complete and send it from the app |
 | `cancel_campaign` | `campaigns:write` | Stops a campaign that is sending or scheduled before it finishes. Never sends anything — it only halts |
 | `enroll_in_automation` | `automations:write` | Enrolls a contact into an **active** automation — the flow runs immediately and may email them |
