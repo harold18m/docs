@@ -169,8 +169,8 @@ Each key grants one or more permissions. The assistant **does not see** the tool
 
 | Permission | Enables |
 |---|---|
-| `contacts:read` | Contacts, their activity, events, senders, domains and the suppression list |
-| `contacts:write` | Create/update contacts, tags, attributes, events and suppression |
+| `contacts:read` | Contacts, their activity, events, senders, domains, the suppression list and your website popups |
+| `contacts:write` | Create/update contacts, tags, attributes, events and suppression, and turn popups on or off |
 | `campaigns:read` | Campaigns and their metric reports |
 | `campaigns:write` | Create campaigns **as drafts** (never sends them) and cancel one that is sending or scheduled |
 | `reports:read` | Aggregated project metrics over a date range |
@@ -237,6 +237,21 @@ The same workflows are registered as **MCP prompts** (`prompts/list`, `prompts/g
 | `get_suppression_list` | Suppressed addresses that will not receive email |
 | `list_senders` | Verified sender identities of the project |
 | `list_domains` | Sending domains and their authentication status |
+
+</Accordion>
+
+<Accordion title="Website popups — contacts:read / contacts:write">
+
+To get your signup popup showing on your website, or find out why a visitor does not see it. Popups are designed in the app.
+
+| Tool | Permission | What it does |
+|---|---|---|
+| `list_popups` | `contacts:read` | Your popups: status, when and where they show up, the offer and how many subscribers each one captured |
+| `get_popup` | `contacts:read` | One popup in detail, with impressions, conversion, attributed sales and what it needs before it can be published |
+| `get_popup_install` | `contacts:read` | How to install it on your website: a one-click link if your Shopify store uses the RQE app, or the code to paste in your theme with the steps |
+| `check_popup_install` | `contacts:read` | Opens the public page of your connected store and tells you whether it loads the popup, which one a visitor gets and, if something fails, what to fix first. Changes nothing |
+| `activate_popup` | `contacts:write` | Publishes a popup in two steps: first it shows the summary, and only with your approval it turns it on |
+| `pause_popup` | `contacts:write` | Pauses an active popup; `activate_popup` turns it on again |
 
 </Accordion>
 
