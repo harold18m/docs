@@ -41,6 +41,7 @@
               "app/campanas",
               "app/contactos-y-segmentos",
               "app/variables",
+      "app/cupones",
               "app/automatizaciones"
             ]
           },

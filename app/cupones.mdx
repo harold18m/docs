@@ -1,0 +1,78 @@
+---
+title: Cupones con código único
+description: "Crea un cupón una vez y envía a cada destinatario su propio código de un solo uso de Shopify, en campañas y automatizaciones."
+---
+
+Un cupón te deja enviar **un código distinto a cada persona**. Lo defines una vez, pones una etiqueta en el email y cada destinatario recibe su código de un solo uso, por ejemplo `BIENVENIDA-R4QUAMUY`.
+
+<Info>
+Necesitas una tienda de Shopify conectada con permiso para crear descuentos. Si falta el permiso, la app te avisa al enviar (ve a [Requisitos](#requisitos)).
+</Info>
+
+## Crea un cupón
+
+<Steps>
+  <Step title="Abre el editor">
+    Entra a cualquier email en el editor.
+  </Step>
+  <Step title="Pulsa Cupón">
+    En el panel de variables, haz clic en **Cupón**.
+  </Step>
+  <Step title="Completa el diálogo">
+    - **Nombre**: cómo lo reconoces tú, por ejemplo "Bienvenida 10".
+    - **Tipo**: porcentaje, monto fijo o envío gratis.
+    - **Valor**: cuánto descuenta. El envío gratis no lleva valor.
+    - **Vence en**: días de vigencia del código, de 1 a 365. Es opcional.
+    - **Prefijo del código**: se sugiere solo. Puedes dejarlo como está.
+  </Step>
+  <Step title="Guarda">
+    El cupón queda disponible para todo el proyecto. Lo creas una vez y lo usas en todos los emails que quieras.
+  </Step>
+</Steps>
+
+## Ponlo en un email
+
+Escribe la etiqueta del cupón donde quieras que aparezca el código, en mayúsculas:
+
+```text
+Tu código de bienvenida: {{coupon.BIENVENIDA10}}
+```
+
+Cada persona recibe el suyo, único y de un solo uso. Al enviar, el código ya existe en Shopify.
+
+<Tip>
+Si no recuerdas la etiqueta, haz clic en el texto del email donde va el código, pulsa **Cupón** en el panel de variables y elige el cupón: se inserta ahí. Si no hay un texto seleccionado, se copia y lo pegas tú.
+</Tip>
+
+## Cuándo se crea el código
+
+| Dónde lo usas | Qué pasa |
+|---|---|
+| Automatización | El código se crea al enviar el correo. No necesitas ningún paso extra en el flujo. |
+| Campaña | Todos los códigos se generan antes del envío. Una campaña grande puede tardar unos minutos más en empezar. |
+
+## Requisitos
+
+- Tienda de Shopify conectada.
+- Permiso de descuentos en esa conexión. Si falta, la app te avisa al enviar. Reconecta Shopify y acepta el permiso nuevo.
+- Un cupón con su valor completo. Un cupón sin valor **bloquea el envío** hasta que lo completes.
+
+## Nunca sale un correo con la etiqueta vacía
+
+Si el código no se pudo crear, ese correo **no se envía** y queda registrado el motivo. Así nadie recibe un email con un hueco donde iba su descuento.
+
+<Warning>
+Si ves correos sin enviar en una campaña con cupón, revisa primero que Shopify siga conectada y con el permiso de descuentos.
+</Warning>
+
+## Vista previa y envíos de prueba
+
+En la vista previa ves un código de ejemplo, como `BIENVENIDA-AB12CD34`, y en los envíos de prueba llega `BIENVENIDA-PRUEBA`. En ninguno de los dos casos se crea nada en Shopify.
+
+## Vienes de Klaviyo
+
+Si importas plantillas con `{% coupon_code 'X' %}`, se convierten solas en `{{coupon.X}}`. El cupón queda creado como **por configurar**: falta el valor. Ábrelo, complétalo y ya puedes enviar.
+
+## El paso Cupón único de las automatizaciones
+
+Sigue funcionando igual. Úsalo si prefieres emitir el código como un paso del flujo. Ve a [Automatizaciones](/app/automatizaciones).
