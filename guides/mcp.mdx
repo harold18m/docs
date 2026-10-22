@@ -200,6 +200,7 @@ Los mismos workflows están registrados como **prompts MCP** (`prompts/list`, `p
 | Workflow | Qué guía |
 |---|---|
 | `launch_email_campaign` | Diseñar, probar y lanzar una campaña a una audiencia existente, con aprobación humana antes del envío |
+| `design_from_reference` | Armar un email desde tu brief, un diseño a replicar (p. ej. exportado de Figma) y tus fotos, igual que en la app |
 | `import_design_and_send` | Convertir un HTML ya diseñado en una campaña enviada |
 | `set_up_domain` | Autenticar un dominio de envío para que las campañas lleguen a la bandeja de entrada |
 | `improve_deliverability` | Diagnosticar por qué la entrega, las aperturas o los clics están bajos, y arreglar lo que se puede desde el chat |
@@ -288,8 +289,9 @@ Modifican datos reales. Ninguna de estas envía correo directamente, pero las ma
 | `create_segment` | `segments:write` | Crea un segmento vacío; se llena después desde la app |
 | `create_template` | `templates:write` | Crea una plantilla de email desde HTML y devuelve el link para abrirla en el editor. Las imágenes deben ser URLs públicas |
 | `update_template` | `templates:write` | Edita una plantilla existente conservando su id — cualquier campaña que ya la use sale con el contenido nuevo. Se puede cambiar HTML, asunto y/o nombre |
-| `generate_template` | `templates:write` | El motor de diseño escribe un email completo a partir de un brief, con la identidad de marca del proyecto, y lo guarda como plantilla. Tarda entre 30 y 90 segundos y consume el tope diario de IA del proyecto |
-| `edit_template_with_ai` | `templates:write` | Reescribe una plantilla existente siguiendo una instrucción en lenguaje natural, conservando su id. Solo para plantillas con diseño editable (las importadas como HTML crudo usan `update_template`) |
+| `import_figma_design` | `templates:write` | Convierte un frame de Figma en plantilla **idéntica al diseño**: mismos textos, tipografías, colores y fotos originales, leídos del archivo (no redibujados por IA). Pásale el link del frame (clic derecho → «Copy link to selection»); si el link es una página, devuelve sus frames para elegir y luego se llama con `frame_ids`. Requiere Figma conectado una vez desde Integraciones |
+| `generate_template` | `templates:write` | El motor de diseño escribe un email completo a partir de un brief, con la identidad de marca del proyecto, y lo guarda como plantilla. Acepta imágenes igual que la app: `reference_image_urls` (hasta 3, un diseño a replicar, p. ej. un PNG exportado de Figma) e `image_urls` (hasta 5 fotos tuyas que se insertan tal cual). URLs https públicas, png/jpeg/gif/webp de hasta 5 MB: súbelas antes con `upload_image`. Tarda entre 30 y 90 segundos y consume el tope diario de IA del proyecto |
+| `edit_template_with_ai` | `templates:write` | Reescribe una plantilla existente siguiendo una instrucción en lenguaje natural, conservando su id. Acepta las mismas `reference_image_urls` e `image_urls` que `generate_template`. Solo para plantillas con diseño editable (las importadas como HTML crudo usan `update_template`) |
 | `create_campaign` | `campaigns:write` | Crea una campaña **siempre en borrador** — tú la revisas, completas y envías desde la app |
 | `cancel_campaign` | `campaigns:write` | Frena una campaña en curso o programada antes de que termine de enviar. No dispara nada — solo detiene |
 | `enroll_in_automation` | `automations:write` | Inscribe un contacto en una automatización **activa** — el flujo corre de inmediato y puede enviarle correo |
