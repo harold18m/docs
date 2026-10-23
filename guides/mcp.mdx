@@ -168,8 +168,8 @@ Cada clave concede uno o más permisos. El asistente **no ve** las herramientas 
 
 | Permiso | Habilita |
 |---|---|
-| `contacts:read` | Contactos, su actividad, eventos, remitentes, dominios y lista de supresión |
-| `contacts:write` | Crear/actualizar contactos, tags, atributos, eventos y supresión |
+| `contacts:read` | Contactos, su actividad, eventos, remitentes, dominios, lista de supresión y los popups de tu web |
+| `contacts:write` | Crear/actualizar contactos, tags, atributos, eventos y supresión, y encender o pausar popups |
 | `campaigns:read` | Campañas y sus reportes de métricas |
 | `campaigns:write` | Crear campañas **en borrador** (nunca las envía) y cancelar una que esté en curso o programada |
 | `reports:read` | Métricas agregadas del proyecto en un rango de fechas |
@@ -236,6 +236,21 @@ Los mismos workflows están registrados como **prompts MCP** (`prompts/list`, `p
 | `get_suppression_list` | Direcciones suprimidas que no recibirán email |
 | `list_senders` | Remitentes verificados del proyecto |
 | `list_domains` | Dominios de envío y su estado de autenticación |
+
+</Accordion>
+
+<Accordion title="Popups de tu web — contacts:read / contacts:write">
+
+Para que el popup de captura aparezca en tu web, o saber por qué un visitante no lo ve. Los popups se diseñan en la app.
+
+| Herramienta | Permiso | Qué hace |
+|---|---|---|
+| `list_popups` | `contacts:read` | Tus popups: estado, cuándo y dónde aparecen, la oferta y cuántos suscriptores captó cada uno |
+| `get_popup` | `contacts:read` | Un popup en detalle, con impresiones, conversión, ventas atribuidas y qué le falta para publicarse |
+| `get_popup_install` | `contacts:read` | Cómo instalarlo en tu web: un link de un clic si tu tienda de Shopify usa la app de RQE, o el código a pegar en el tema con los pasos |
+| `check_popup_install` | `contacts:read` | Abre la página pública de tu tienda conectada y te dice si carga el popup, cuál le llega a un visitante y, si algo falla, qué arreglar primero. No cambia nada |
+| `activate_popup` | `contacts:write` | Publica un popup en dos pasos: primero muestra el resumen, y solo con tu aprobación lo enciende |
+| `pause_popup` | `contacts:write` | Pausa un popup activo; se reactiva con `activate_popup` |
 
 </Accordion>
 
