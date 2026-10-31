@@ -235,6 +235,33 @@ Learn more in [Node.js SDK](/en/guides/sdk-nodejs).
 
 ---
 
+## Recording sales (stores without Shopify)
+
+For a purchase to add revenue to your campaigns and automations, send it as soon as it is paid:
+
+```json
+{
+  "email": "jane@acme.com",
+  "event": "purchase",
+  "properties": { "total": 89.99, "order_id": "242", "currency": "USD" },
+  "timestamp": "2026-10-31T16:57:30Z"
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| event | Yes | `purchase` or `compra` |
+| properties.total | Yes | Final amount paid, as a number: `31920` or `89.99`. Text like `"31.920"` is not accepted, and the response includes a `warning` |
+| properties.order_id or properties.pedido | Recommended | The order id. The same order never counts twice |
+| properties.currency | Recommended | 3-letter code (`CLP`, `USD`, `PEN`). `CLP` if missing |
+| timestamp | Recommended | When the purchase happened. It decides which email gets the sale |
+
+The sale is attributed like a Shopify order: to the last campaign and the last automation that person opened or clicked within your project's attribution window. If there is none, it stays in Sales as unattributed.
+
+If your project has Shopify connected, these events do not add revenue: orders already come from Shopify. `sk_test_` keys do not add revenue either. Refunds are not deducted through this path yet.
+
+---
+
 ## Errors
 
 Error format: `{ "error": "message" }`. Codes common to all endpoints:
