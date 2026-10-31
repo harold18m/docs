@@ -235,6 +235,33 @@ Ver más en [SDK de Node.js](/guides/sdk-nodejs).
 
 ---
 
+## Registrar ventas (tiendas sin Shopify)
+
+Para que una compra sume ingresos a tus campañas y automatizaciones, mándala apenas se pague:
+
+```json
+{
+  "email": "jane@acme.com",
+  "event": "compra",
+  "properties": { "total": 31920, "order_id": "242", "currency": "CLP" },
+  "timestamp": "2026-10-31T16:57:30Z"
+}
+```
+
+| Campo | Requerido | Descripción |
+|---|---|---|
+| event | Sí | `compra` o `purchase` |
+| properties.total | Sí | Monto final pagado, como número: `31920` o `89.99`. Un texto como `"31.920"` no se acepta, y la respuesta trae un `warning` |
+| properties.order_id o properties.pedido | Recomendado | Id del pedido. El mismo pedido nunca se cuenta dos veces |
+| properties.currency | Recomendado | Código de 3 letras (`CLP`, `USD`, `PEN`). Si falta, se usa `CLP` |
+| timestamp | Recomendado | Cuándo fue la compra. Decide qué correo se lleva la venta |
+
+La venta se atribuye igual que un pedido de Shopify: a la última campaña y a la última automatización que esa persona abrió o a las que hizo clic dentro de la ventana de atribución de tu proyecto. Si no hay ninguna, queda registrada en Ventas sin atribuir.
+
+Si tu proyecto tiene Shopify conectado, estos eventos no suman ingresos: los pedidos ya llegan desde Shopify. Las keys `sk_test_` tampoco suman. Los reembolsos todavía no se descuentan por este camino.
+
+---
+
 ## Errores
 
 Formato de error: `{ "error": "mensaje" }`. Códigos comunes a todos los endpoints:
