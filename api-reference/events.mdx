@@ -254,6 +254,7 @@ Para que una compra sume ingresos a tus campañas y automatizaciones, mándala a
 | properties.total | Sí | Monto final pagado, como número: `31920` o `89.99`. Un texto como `"31.920"` no se acepta, y la respuesta trae un `warning` |
 | properties.order_id o properties.pedido | Recomendado | Id del pedido. El mismo pedido nunca se cuenta dos veces |
 | properties.currency | Recomendado | Código de 3 letras (`CLP`, `USD`, `PEN`). Si falta, se usa `CLP` |
+| properties.discount_code | Opcional | Cupón usado en la compra. Lo marca como canjeado |
 | timestamp | Recomendado | Cuándo fue la compra. Decide qué correo se lleva la venta |
 
 La venta se atribuye igual que un pedido de Shopify: a la última campaña y a la última automatización que esa persona abrió o a las que hizo clic dentro de la ventana de atribución de tu proyecto. Si no hay ninguna, queda registrada en Ventas sin atribuir.

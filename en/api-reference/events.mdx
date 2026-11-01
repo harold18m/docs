@@ -254,6 +254,7 @@ For a purchase to add revenue to your campaigns and automations, send it as soon
 | properties.total | Yes | Final amount paid, as a number: `31920` or `89.99`. Text like `"31.920"` is not accepted, and the response includes a `warning` |
 | properties.order_id or properties.pedido | Recommended | The order id. The same order never counts twice |
 | properties.currency | Recommended | 3-letter code (`CLP`, `USD`, `PEN`). `CLP` if missing |
+| properties.discount_code | Optional | Coupon used in the purchase. Marks it as redeemed |
 | timestamp | Recommended | When the purchase happened. It decides which email gets the sale |
 
 The sale is attributed like a Shopify order: to the last campaign and the last automation that person opened or clicked within your project's attribution window. If there is none, it stays in Sales as unattributed.
